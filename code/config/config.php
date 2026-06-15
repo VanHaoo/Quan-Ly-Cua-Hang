@@ -8,6 +8,7 @@ const DB_USER = 'root';
 const DB_PASS = '';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.use_strict_mode', '1');
     session_set_cookie_params([
         'httponly' => true,
         'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
@@ -106,13 +107,25 @@ function csrf_token(): string
     return (string) $_SESSION['csrf_token'];
 }
 
-function verify_csrf(): void
+function verify_csrf_value(?string $token): void
 {
-    $token = (string) ($_POST['csrf_token'] ?? '');
-    if ($token === '' || !hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $token)) {
+    $sessionToken = (string) ($_SESSION['csrf_token'] ?? '');
+
+    if ($token === null || $token === '' || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
         http_response_code(419);
         exit('Phiên làm việc không hợp lệ. Hãy tải lại trang và thử lại.');
     }
+}
+
+function verify_csrf(): void
+{
+    verify_csrf_value(isset($_POST['csrf_token']) ? (string) $_POST['csrf_token'] : null);
+}
+
+function verify_csrf_header(): void
+{
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+    verify_csrf_value(is_string($token) ? $token : null);
 }
 
 function flash(string $key, ?string $message = null): ?string

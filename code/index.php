@@ -1,12 +1,17 @@
 <?php
 
 declare(strict_types=1);
+
 require_once __DIR__ . '/config/config.php';
+
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_SECONDS = 300;
 
 if (($_GET['action'] ?? '') === 'logout') {
     if (is_logged_in()) {
         log_activity('logout', 'Đăng xuất khỏi hệ thống');
     }
+
     $_SESSION = [];
     session_destroy();
     session_start();
@@ -18,31 +23,85 @@ if (is_logged_in()) {
     redirect('dashboard.php');
 }
 
+$_SESSION['login_attempts'] ??= 0;
+$_SESSION['login_lock_until'] ??= 0;
+
+$lockUntil = (int) $_SESSION['login_lock_until'];
+if ($lockUntil > 0 && $lockUntil <= time()) {
+    $_SESSION['login_attempts'] = 0;
+    $_SESSION['login_lock_until'] = 0;
+    $lockUntil = 0;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
-    $username = trim((string) ($_POST['username'] ?? ''));
-    $password = (string) ($_POST['password'] ?? '');
 
-    if ($username === '' || $password === '') {
-        flash('error', 'Vui lòng nhập đầy đủ tài khoản và mật khẩu.');
+    $lockUntil = (int) $_SESSION['login_lock_until'];
+    if ($lockUntil > time()) {
+        $remainingSeconds = $lockUntil - time();
+        flash(
+            'error',
+            'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau '
+            . (int) ceil($remainingSeconds / 60)
+            . ' phút.'
+        );
     } else {
-        $stmt = db()->prepare('SELECT id, username, password, full_name, role, status FROM users WHERE username = ? LIMIT 1');
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
+        $username = trim((string) ($_POST['username'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
 
-        if ($user && (int) $user['status'] === 1 && password_verify($password, $user['password'])) {
-            unset($user['password'], $user['status']);
-            session_regenerate_id(true);
-            $_SESSION['user'] = $user;
-            log_activity('login', 'Đăng nhập vào hệ thống');
-            redirect('dashboard.php');
+        if ($username === '' || $password === '') {
+            flash('error', 'Vui lòng nhập đầy đủ tài khoản và mật khẩu.');
+        } else {
+            $stmt = db()->prepare(
+                'SELECT id, username, password, full_name, role, status
+                 FROM users
+                 WHERE username = ?
+                 LIMIT 1'
+            );
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+
+            if (
+                $user
+                && (int) $user['status'] === 1
+                && password_verify($password, $user['password'])
+            ) {
+                unset($user['password'], $user['status']);
+                unset($_SESSION['login_attempts'], $_SESSION['login_lock_until']);
+
+                session_regenerate_id(true);
+                $_SESSION['user'] = $user;
+                log_activity('login', 'Đăng nhập vào hệ thống');
+                redirect('dashboard.php');
+            }
+
+            usleep(300000);
+            $_SESSION['login_attempts'] = (int) $_SESSION['login_attempts'] + 1;
+
+            if ((int) $_SESSION['login_attempts'] >= LOGIN_MAX_ATTEMPTS) {
+                $_SESSION['login_lock_until'] = time() + LOGIN_LOCK_SECONDS;
+                $_SESSION['login_attempts'] = 0;
+                flash(
+                    'error',
+                    'Bạn đã nhập sai quá nhiều lần. Tài khoản đăng nhập tạm khóa trong 5 phút.'
+                );
+            } else {
+                $remainingAttempts = LOGIN_MAX_ATTEMPTS - (int) $_SESSION['login_attempts'];
+                flash(
+                    'error',
+                    'Tên đăng nhập hoặc mật khẩu không đúng. Còn '
+                    . $remainingAttempts
+                    . ' lần thử.'
+                );
+            }
         }
-        flash('error', 'Tên đăng nhập hoặc mật khẩu không đúng.');
     }
 }
 
 $error = flash('error');
 $success = flash('success');
+$lockUntil = (int) ($_SESSION['login_lock_until'] ?? 0);
+$isLocked = $lockUntil > time();
 ?>
 <!doctype html>
 <html lang="vi">
@@ -58,15 +117,32 @@ $success = flash('success');
     <h1>Quản lý bán hàng</h1>
     <p>Đăng nhập để bắt đầu phiên làm việc</p>
 
-    <?php if ($success): ?><div class="alert success"><?= e($success) ?></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert error"><?= e($error) ?></div><?php endif; ?>
+    <?php if ($success): ?>
+        <div class="alert success"><?= e($success) ?></div>
+    <?php endif; ?>
+
+    <?php if ($error): ?>
+        <div class="alert error"><?= e($error) ?></div>
+    <?php endif; ?>
 
     <form method="post" class="form-grid one-column">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-        <label>Tên đăng nhập<input name="username" autocomplete="username" required></label>
-        <label>Mật khẩu<input type="password" name="password" autocomplete="current-password" required></label>
-        <button class="btn primary full" type="submit">Đăng nhập</button>
+
+        <label>
+            Tên đăng nhập
+            <input name="username" autocomplete="username" required <?= $isLocked ? 'disabled' : '' ?>>
+        </label>
+
+        <label>
+            Mật khẩu
+            <input type="password" name="password" autocomplete="current-password" required <?= $isLocked ? 'disabled' : '' ?>>
+        </label>
+
+        <button class="btn primary full" type="submit" <?= $isLocked ? 'disabled' : '' ?>>
+            <?= $isLocked ? 'Đang tạm khóa' : 'Đăng nhập' ?>
+        </button>
     </form>
+
     <div class="demo-account">
         <strong>Tài khoản thử nghiệm</strong>
         <span>admin / 123456</span>

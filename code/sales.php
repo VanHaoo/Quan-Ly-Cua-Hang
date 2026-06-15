@@ -1,7 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 require_once __DIR__ . '/config/config.php';
+require_once __DIR__ . '/services/sales_service.php';
+
 require_login();
 
 $pdo = db();
@@ -13,28 +16,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
 
     if ($action === 'add') {
-        $id = (int) ($_POST['product_id'] ?? 0);
+        $productId = (int) ($_POST['product_id'] ?? 0);
         $quantity = max(1, (int) ($_POST['quantity'] ?? 1));
-        $stmt = $pdo->prepare('SELECT id, code, name, price, stock FROM products WHERE id=? AND status=1');
-        $stmt->execute([$id]);
+
+        $stmt = $pdo->prepare(
+            'SELECT id, code, name, price, stock
+             FROM products
+             WHERE id = ? AND status = 1'
+        );
+        $stmt->execute([$productId]);
         $product = $stmt->fetch();
+
         if (!$product || (int) $product['stock'] < $quantity) {
             flash('error', 'Sản phẩm không tồn tại hoặc không đủ hàng.');
         } else {
-            $current = (int) ($_SESSION['cart'][$id]['quantity'] ?? 0);
-            if ($current + $quantity > (int) $product['stock']) {
+            $currentQuantity = (int) ($_SESSION['cart'][$productId]['quantity'] ?? 0);
+
+            if ($currentQuantity + $quantity > (int) $product['stock']) {
                 flash('error', 'Số lượng trong giỏ vượt quá tồn kho.');
             } else {
-                $_SESSION['cart'][$id] = [
+                $_SESSION['cart'][$productId] = [
                     'id' => (int) $product['id'],
-                    'code' => $product['code'],
-                    'name' => $product['name'],
+                    'code' => (string) $product['code'],
+                    'name' => (string) $product['name'],
                     'price' => (float) $product['price'],
-                    'quantity' => $current + $quantity,
+                    'quantity' => $currentQuantity + $quantity,
                 ];
                 flash('success', 'Đã thêm sản phẩm vào giỏ hàng.');
             }
         }
+
         redirect('sales.php');
     }
 
@@ -50,67 +61,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'checkout') {
-        $cart = $_SESSION['cart'];
-        $customerName = trim((string) ($_POST['customer_name'] ?? '')) ?: 'Khách lẻ';
-        $customerMoney = filter_var($_POST['customer_money'] ?? null, FILTER_VALIDATE_FLOAT);
-        $postedToken = (string) ($_POST['checkout_token'] ?? '');
-
-        if (!$cart) {
-            flash('error', 'Giỏ hàng đang trống.');
-            redirect('sales.php');
-        }
-        if ($postedToken === '' || !hash_equals((string) $_SESSION['checkout_token'], $postedToken)) {
-            flash('error', 'Giao dịch đã được xử lý hoặc phiên thanh toán không hợp lệ.');
-            redirect('sales.php');
-        }
-
         try {
-            $pdo->beginTransaction();
-            $items = [];
-            $total = 0.0;
+            $result = checkout_order(
+                $pdo,
+                $_SESSION['cart'],
+                $_POST,
+                (int) current_user()['id'],
+                (string) $_SESSION['checkout_token']
+            );
 
-            foreach ($cart as $cartItem) {
-                $stmt = $pdo->prepare('SELECT id, code, name, price, stock, status FROM products WHERE id=? FOR UPDATE');
-                $stmt->execute([(int) $cartItem['id']]);
-                $product = $stmt->fetch();
-                $quantity = (int) $cartItem['quantity'];
+            log_activity(
+                'invoice_create',
+                'Tạo hóa đơn '
+                . $result['invoice_code']
+                . ' trị giá '
+                . money($result['total_amount'])
+            );
 
-                if (!$product || (int) $product['status'] !== 1 || (int) $product['stock'] < $quantity) {
-                    throw new RuntimeException('Sản phẩm ' . ($cartItem['name'] ?? '') . ' không còn đủ số lượng.');
-                }
-
-                $subtotal = (float) $product['price'] * $quantity;
-                $total += $subtotal;
-                $items[] = [$product, $quantity, $subtotal];
-            }
-
-            if ($customerMoney === false || $customerMoney < $total) {
-                throw new RuntimeException('Tiền khách đưa chưa đủ để thanh toán.');
-            }
-
-            $invoiceCode = 'HD' . date('YmdHis') . random_int(10, 99);
-            $stmt = $pdo->prepare('INSERT INTO invoices(invoice_code,checkout_token,user_id,customer_name,total_amount,customer_money,change_money,status) VALUES(?,?,?,?,?,?,?,\'paid\')');
-            $stmt->execute([$invoiceCode, $postedToken, (int) current_user()['id'], $customerName, $total, $customerMoney, $customerMoney - $total]);
-            $invoiceId = (int) $pdo->lastInsertId();
-
-            $detail = $pdo->prepare('INSERT INTO invoice_details(invoice_id,product_id,product_code,product_name,quantity,price,subtotal) VALUES(?,?,?,?,?,?,?)');
-            $updateStock = $pdo->prepare('UPDATE products SET stock=stock-? WHERE id=?');
-            foreach ($items as [$product, $quantity, $subtotal]) {
-                $detail->execute([$invoiceId, $product['id'], $product['code'], $product['name'], $quantity, $product['price'], $subtotal]);
-                $updateStock->execute([$quantity, $product['id']]);
-            }
-
-            $pdo->commit();
-            log_activity('invoice_create', 'Tạo hóa đơn ' . $invoiceCode . ' trị giá ' . money($total));
             $_SESSION['cart'] = [];
             $_SESSION['checkout_token'] = bin2hex(random_bytes(32));
-            flash('success', 'Thanh toán thành công. Hóa đơn ' . $invoiceCode . ' đã được tạo.');
-            redirect('invoices.php?id=' . $invoiceId);
+            flash('success', $result['message']);
+            redirect('invoices.php?id=' . $result['invoice_id']);
         } catch (Throwable $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            flash('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'Không thể hoàn tất thanh toán.');
+            flash(
+                'error',
+                $exception instanceof RuntimeException
+                    ? $exception->getMessage()
+                    : 'Không thể hoàn tất thanh toán.'
+            );
             redirect('sales.php');
         }
     }
@@ -129,7 +107,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $products = $stmt->fetchAll();
 $cart = $_SESSION['cart'];
-$total = array_sum(array_map(fn(array $item): float => $item['price'] * $item['quantity'], $cart));
+$subtotalAmount = array_sum(array_map(fn(array $item): float => $item['price'] * $item['quantity'], $cart));
 
 render_header('Bán hàng tại quầy', 'sales');
 ?>
@@ -158,21 +136,142 @@ render_header('Bán hàng tại quầy', 'sales');
                 <div class="cart-item"><div><strong><?= e($item['name']) ?></strong><small><?= (int) $item['quantity'] ?> × <?= money($item['price']) ?></small></div><span><?= money($item['price'] * $item['quantity']) ?></span><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="remove"><input type="hidden" name="product_id" value="<?= (int) $item['id'] ?>"><button class="icon-button" title="Xóa">×</button></form></div>
             <?php endforeach; ?>
         </div>
-        <div class="cart-total"><span>Tổng tiền</span><strong><?= money($total) ?></strong></div>
+
+        <div class="cart-summary">
+            <p><span>Tạm tính</span><strong><?= money($subtotalAmount) ?></strong></p>
+            <p id="discount-row" hidden><span>Giảm giá</span><strong id="discount-value">0 đ</strong></p>
+            <p class="payable"><span>Khách cần trả</span><strong id="payable-value"><?= money($subtotalAmount) ?></strong></p>
+        </div>
+
         <form method="post" class="form-grid one-column" id="checkout-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="checkout"><input type="hidden" name="checkout_token" value="<?= e($_SESSION['checkout_token']) ?>">
-            <label>Tên khách hàng<input name="customer_name" placeholder="Khách lẻ"></label>
-            <label>Tiền khách đưa<input type="number" name="customer_money" min="<?= (int) ceil($total) ?>" step="1000" required></label>
+
+            <div class="member-section">
+                <div class="member-title"><strong>Thông tin khách hàng</strong><small>Để trống số điện thoại nếu là khách lẻ</small></div>
+                <label>Số điện thoại thành viên
+                    <div class="inline-field"><input id="customer-phone" name="customer_phone" inputmode="numeric" maxlength="11" placeholder="Ví dụ 0901234567"><button type="button" class="btn secondary" id="lookup-customer">Kiểm tra</button></div>
+                </label>
+                <label>Tên khách hàng<input id="customer-name" name="customer_name" placeholder="Khách lẻ"></label>
+                <div id="customer-info" class="customer-info muted">Khách thành viên được cộng 1 điểm cho mỗi 10.000 đ. Đủ 100 điểm sẽ nhận voucher giảm 20.000 đ.</div>
+                <label>Mã voucher
+                    <input id="voucher-code" name="voucher_code" list="voucher-list" placeholder="Không bắt buộc" autocomplete="off">
+                    <datalist id="voucher-list"></datalist>
+                </label>
+            </div>
+
+            <label>Tiền khách đưa<input id="customer-money" type="number" name="customer_money" min="<?= (int) ceil($subtotalAmount) ?>" step="1000" required></label>
+            <div class="change-preview"><span>Tiền thừa dự kiến</span><strong id="change-value">0 đ</strong></div>
             <button class="btn primary full" type="submit" <?= !$cart ? 'disabled' : '' ?>>Thanh toán</button>
         </form>
         <?php if ($cart): ?><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="clear"><button class="btn danger full" data-confirm="Xóa toàn bộ giỏ hàng?">Xóa giỏ hàng</button></form><?php endif; ?>
     </aside>
 </div>
 <script>
+(() => {
+    const subtotal = <?= json_encode((float) $subtotalAmount) ?>;
+    const phoneInput = document.getElementById('customer-phone');
+    const nameInput = document.getElementById('customer-name');
+    const voucherInput = document.getElementById('voucher-code');
+    const voucherList = document.getElementById('voucher-list');
+    const customerInfo = document.getElementById('customer-info');
+    const discountRow = document.getElementById('discount-row');
+    const discountValue = document.getElementById('discount-value');
+    const payableValue = document.getElementById('payable-value');
+    const moneyInput = document.getElementById('customer-money');
+    const changeValue = document.getElementById('change-value');
+    const lookupButton = document.getElementById('lookup-customer');
+    const vouchers = new Map();
+    let payable = subtotal;
+
+    const formatMoney = value => new Intl.NumberFormat('vi-VN').format(Math.max(0, Math.round(value))) + ' đ';
+
+    function refreshPayment() {
+        const code = voucherInput.value.trim().toUpperCase();
+        const voucher = vouchers.get(code);
+        let discount = 0;
+
+        if (voucher && subtotal >= Number(voucher.min_order)) {
+            discount = voucher.discount_type === 'percent'
+                ? subtotal * Number(voucher.discount_value) / 100
+                : Number(voucher.discount_value);
+        }
+        discount = Math.min(discount, subtotal);
+        payable = Math.max(0, subtotal - discount);
+
+        discountRow.hidden = discount <= 0;
+        discountValue.textContent = '- ' + formatMoney(discount);
+        payableValue.textContent = formatMoney(payable);
+        moneyInput.min = String(Math.ceil(payable));
+
+        const given = Number(moneyInput.value || 0);
+        changeValue.textContent = formatMoney(Math.max(0, given - payable));
+    }
+
+    async function lookupCustomer() {
+        const phone = phoneInput.value.replace(/\D/g, '');
+        phoneInput.value = phone;
+        vouchers.clear();
+        voucherList.innerHTML = '';
+        voucherInput.value = '';
+        refreshPayment();
+
+        if (!phone) {
+            customerInfo.textContent = 'Khách lẻ không tích điểm và không sử dụng voucher.';
+            return;
+        }
+
+        customerInfo.textContent = 'Đang kiểm tra khách hàng...';
+        try {
+            const response = await fetch('api/customer_lookup.php', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    'X-CSRF-Token': <?= json_encode(csrf_token()) ?>
+                },
+                body: new URLSearchParams({phone})
+            });
+            const data = await response.json();
+
+            if (!data.found) {
+                customerInfo.textContent = data.message;
+                nameInput.value = '';
+                return;
+            }
+
+            nameInput.value = data.customer.name;
+            customerInfo.textContent = `${data.customer.name} · ${data.customer.points} điểm · Tổng chi tiêu ${formatMoney(data.customer.total_spent)}`;
+
+            data.vouchers.forEach(voucher => {
+                vouchers.set(voucher.code.toUpperCase(), voucher);
+                const option = document.createElement('option');
+                const valueText = voucher.discount_type === 'percent'
+                    ? `${Number(voucher.discount_value)}%`
+                    : formatMoney(voucher.discount_value);
+                option.value = voucher.code;
+                option.label = `${voucher.name} · Giảm ${valueText} · Đơn từ ${formatMoney(voucher.min_order)}`;
+                voucherList.appendChild(option);
+            });
+
+            if (!data.vouchers.length) {
+                customerInfo.textContent += ' · Chưa có voucher khả dụng';
+            }
+        } catch (error) {
+            customerInfo.textContent = 'Không thể tra cứu khách hàng. Bạn vẫn có thể tiếp tục thanh toán.';
+        }
+    }
+
+    lookupButton?.addEventListener('click', lookupCustomer);
+    phoneInput?.addEventListener('blur', lookupCustomer);
+    voucherInput?.addEventListener('input', refreshPayment);
+    moneyInput?.addEventListener('input', refreshPayment);
+    refreshPayment();
+
     document.getElementById('checkout-form')?.addEventListener('submit', function () {
         const button = this.querySelector('button[type="submit"]');
         button.disabled = true;
         button.textContent = 'Đang xử lý...';
     });
+})();
 </script>
 <?php render_footer(); ?>
