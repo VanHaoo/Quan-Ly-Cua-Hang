@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+require_once __DIR__ . '/config/config.php';
+require_admin();
+
+$pdo = db();
+$from = (string) ($_GET['from'] ?? date('Y-m-01'));
+$to = (string) ($_GET['to'] ?? date('Y-m-d'));
+if ($from > $to) {
+    [$from, $to] = [$to, $from];
+}
+
+$stmt = $pdo->prepare("SELECT COUNT(*) invoice_count, COALESCE(SUM(total_amount),0) revenue, COALESCE(AVG(total_amount),0) average_value FROM invoices WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ?");
+$stmt->execute([$from, $to]);
+$summary = $stmt->fetch();
+
+$stmt = $pdo->prepare("SELECT COALESCE(SUM(d.quantity),0) FROM invoice_details d JOIN invoices i ON i.id=d.invoice_id WHERE i.status='paid' AND DATE(i.created_at) BETWEEN ? AND ?");
+$stmt->execute([$from, $to]);
+$soldQuantity = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT DATE(created_at) sale_date,COUNT(*) invoice_count,SUM(total_amount) revenue FROM invoices WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ? GROUP BY DATE(created_at) ORDER BY sale_date DESC");
+$stmt->execute([$from, $to]);
+$daily = $stmt->fetchAll();
+
+$stmt = $pdo->prepare("SELECT d.product_code,d.product_name,SUM(d.quantity) sold_quantity,SUM(d.subtotal) revenue FROM invoice_details d JOIN invoices i ON i.id=d.invoice_id WHERE i.status='paid' AND DATE(i.created_at) BETWEEN ? AND ? GROUP BY d.product_id,d.product_code,d.product_name ORDER BY sold_quantity DESC LIMIT 10");
+$stmt->execute([$from, $to]);
+$topProducts = $stmt->fetchAll();
+
+$lowStock = $pdo->query('SELECT code,name,stock,min_stock,unit FROM products WHERE status=1 AND stock<=min_stock ORDER BY stock ASC')->fetchAll();
+
+render_header('Thống kê kinh doanh', 'statistics');
+?>
+<div class="panel filter-panel"><form method="get" class="filter-form"><label>Từ ngày<input type="date" name="from" value="<?= e($from) ?>"></label><label>Đến ngày<input type="date" name="to" value="<?= e($to) ?>"></label><button class="btn primary">Xem thống kê</button></form></div>
+<div class="stats-grid">
+    <article class="stat-card"><span>Tổng doanh thu</span><strong><?= money($summary['revenue']) ?></strong></article>
+    <article class="stat-card"><span>Số hóa đơn</span><strong><?= (int) $summary['invoice_count'] ?></strong></article>
+    <article class="stat-card"><span>Giá trị trung bình</span><strong><?= money($summary['average_value']) ?></strong></article>
+    <article class="stat-card"><span>Sản phẩm đã bán</span><strong><?= $soldQuantity ?></strong></article>
+</div>
+<div class="two-column equal">
+    <section class="panel"><div class="panel-heading"><div><h2>Doanh thu theo ngày</h2><p>Từ <?= date('d/m/Y', strtotime($from)) ?> đến <?= date('d/m/Y', strtotime($to)) ?></p></div></div><div class="table-wrap"><table><thead><tr><th>Ngày</th><th class="right">Hóa đơn</th><th class="right">Doanh thu</th></tr></thead><tbody><?php if (!$daily): ?><tr><td colspan="3" class="empty">Chưa có dữ liệu.</td></tr><?php endif; ?><?php foreach ($daily as $row): ?><tr><td><?= date('d/m/Y', strtotime($row['sale_date'])) ?></td><td class="right"><?= (int) $row['invoice_count'] ?></td><td class="right"><?= money($row['revenue']) ?></td></tr><?php endforeach; ?></tbody></table></div></section>
+    <section class="panel"><div class="panel-heading"><div><h2>Sản phẩm bán chạy</h2><p>Xếp hạng theo số lượng đã bán</p></div></div><div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th class="right">Đã bán</th><th class="right">Doanh thu</th></tr></thead><tbody><?php if (!$topProducts): ?><tr><td colspan="3" class="empty">Chưa có dữ liệu.</td></tr><?php endif; ?><?php foreach ($topProducts as $row): ?><tr><td><?= e($row['product_name']) ?><small class="block muted"><?= e($row['product_code']) ?></small></td><td class="right"><?= (int) $row['sold_quantity'] ?></td><td class="right"><?= money($row['revenue']) ?></td></tr><?php endforeach; ?></tbody></table></div></section>
+</div>
+<section class="panel"><div class="panel-heading"><div><h2>Sản phẩm sắp hết hàng</h2><p>Cảnh báo theo mức tồn tối thiểu</p></div></div><div class="table-wrap"><table><thead><tr><th>Mã</th><th>Sản phẩm</th><th class="right">Còn lại</th><th class="right">Mức cảnh báo</th></tr></thead><tbody><?php if (!$lowStock): ?><tr><td colspan="4" class="empty">Không có sản phẩm sắp hết.</td></tr><?php endif; ?><?php foreach ($lowStock as $row): ?><tr><td><?= e($row['code']) ?></td><td><?= e($row['name']) ?></td><td class="right"><span class="stock low"><?= (int) $row['stock'] ?> <?= e($row['unit']) ?></span></td><td class="right"><?= (int) $row['min_stock'] ?></td></tr><?php endforeach; ?></tbody></table></div></section>
+<?php render_footer(); ?>
