@@ -218,7 +218,7 @@ function render_header(string $title, string $active = ''): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= e($title) ?> | Quản lý bán hàng</title>
-        <link rel="stylesheet" href="<?= e(url('assets/css/style.css') . '?v=31') ?>">
+        <link rel="stylesheet" href="<?= e(url('assets/css/style.css') . '?v=32') ?>">
     </head>
 
     <body>
@@ -323,15 +323,7 @@ function render_footer(): void
     ?>
         </main>
     </div>
-    <script>
-        document.querySelectorAll('[data-confirm]').forEach(function (button) {
-            button.addEventListener('click', function (event) {
-                if (!confirm(button.dataset.confirm || 'Bạn có chắc chắn không?')) {
-                    event.preventDefault();
-                }
-            });
-        });
-    </script>
+<   script src="<?= e(url('assets/js/app.js') . '?v=3') ?>"></script>
     <script src="<?= e(url('assets/js/app.js') . '?v=2') ?>"></script>
     </body>
     </html>
