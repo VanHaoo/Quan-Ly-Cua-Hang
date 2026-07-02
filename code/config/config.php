@@ -38,7 +38,7 @@ function db(): PDO
         );
     } catch (PDOException) {
         http_response_code(500);
-        exit('Không thể kết nối cơ sở dữ liệu. Hãy bật MySQL và nhập file database/quan_ly_ban_hang.sql.');
+        exit('Không thể kết nối cơ sở dữ liệu. Hãy bật MySQL và import file database/quan_ly_ban_hang.sql.');
     }
 
     return $pdo;
@@ -77,9 +77,26 @@ function is_logged_in(): bool
     return current_user() !== null;
 }
 
+function has_role(string ...$roles): bool
+{
+    $role = current_user()['role'] ?? '';
+    return in_array($role, $roles, true);
+}
+
 function is_admin(): bool
 {
-    return (current_user()['role'] ?? '') === 'admin';
+    return has_role('admin');
+}
+
+function role_name(?string $role = null): string
+{
+    $role ??= current_user()['role'] ?? '';
+    return match ($role) {
+        'admin' => 'Quản lý',
+        'cashier' => 'Thu ngân',
+        'warehouse' => 'Nhân viên kho',
+        default => 'Người dùng',
+    };
 }
 
 function require_login(): void
@@ -92,8 +109,13 @@ function require_login(): void
 
 function require_admin(): void
 {
+    require_roles('admin');
+}
+
+function require_roles(string ...$roles): void
+{
     require_login();
-    if (!is_admin()) {
+    if (!has_role(...$roles)) {
         flash('error', 'Bạn không có quyền sử dụng chức năng này.');
         redirect('dashboard.php');
     }
@@ -110,7 +132,6 @@ function csrf_token(): string
 function verify_csrf_value(?string $token): void
 {
     $sessionToken = (string) ($_SESSION['csrf_token'] ?? '');
-
     if ($token === null || $token === '' || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
         http_response_code(419);
         exit('Phiên làm việc không hợp lệ. Hãy tải lại trang và thử lại.');
@@ -134,7 +155,6 @@ function flash(string $key, ?string $message = null): ?string
         $_SESSION['flash'][$key] = $message;
         return null;
     }
-
     $value = $_SESSION['flash'][$key] ?? null;
     unset($_SESSION['flash'][$key]);
     return is_string($value) ? $value : null;
@@ -148,6 +168,11 @@ function log_activity(string $action, string $description): void
     } catch (Throwable) {
         // Nhật ký không làm gián đoạn thao tác chính.
     }
+}
+
+function active_class(string $active, string $name): string
+{
+    return $active === $name ? 'active' : '';
 }
 
 function render_header(string $title, string $active = ''): void
@@ -169,29 +194,53 @@ function render_header(string $title, string $active = ''): void
         <aside class="sidebar">
             <a class="brand" href="<?= e(url('dashboard.php')) ?>">
                 <span class="brand-icon">🛒</span>
-                <span><strong>POS Mini</strong><small>Quản lý bán hàng</small></span>
+                <span><strong>POS Mini</strong><small>Hệ thống bán hàng tại quầy</small></span>
             </a>
-            <nav>
-                <a class="<?= $active === 'dashboard' ? 'active' : '' ?>" href="<?= e(url('dashboard.php')) ?>">▦ Tổng quan</a>
-                <?php if (is_admin()): ?>
-                    <a class="<?= $active === 'products' ? 'active' : '' ?>" href="<?= e(url('products.php')) ?>">▣ Sản phẩm</a>
+            <nav class="side-nav">
+                <div class="nav-group">
+                    <small>Tổng quan</small>
+                    <a class="<?= active_class($active, 'dashboard') ?>" href="<?= e(url('dashboard.php')) ?>">▦ Bảng điều khiển</a>
+                </div>
+
+                <?php if (has_role('admin', 'cashier')): ?>
+                    <div class="nav-group">
+                        <small>Bán hàng tại quầy</small>
+                        <a class="<?= active_class($active, 'sales') ?>" href="<?= e(url('sales.php')) ?>">🛍 Bán hàng</a>
+                        <a class="<?= active_class($active, 'invoices') ?>" href="<?= e(url('invoices.php')) ?>">▤ Hóa đơn</a>
+                        <a class="<?= active_class($active, 'customers') ?>" href="<?= e(url('customers.php')) ?>">♡ Khách hàng - tích điểm</a>
+                    </div>
                 <?php endif; ?>
-                <a class="<?= $active === 'sales' ? 'active' : '' ?>" href="<?= e(url('sales.php')) ?>">🛍 Bán hàng</a>
-                <a class="<?= $active === 'invoices' ? 'active' : '' ?>" href="<?= e(url('invoices.php')) ?>">▤ Hóa đơn</a>
+
+                <?php if (has_role('admin', 'warehouse')): ?>
+                    <div class="nav-group">
+                        <small>Quản lý kho</small>
+                        <a class="<?= active_class($active, 'inventory') ?>" href="<?= e(url('inventory.php')) ?>">▣ Kiểm tra tồn kho</a>
+                        <a class="<?= active_class($active, 'stock_import') ?>" href="<?= e(url('stock_import.php')) ?>">↧ Nhập hàng</a>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (is_admin()): ?>
-                    <a class="<?= $active === 'statistics' ? 'active' : '' ?>" href="<?= e(url('statistics.php')) ?>">▥ Thống kê</a>
+                    <div class="nav-group">
+                        <small>Quản trị hệ thống</small>
+                        <a class="<?= active_class($active, 'products') ?>" href="<?= e(url('products.php')) ?>">▥ Quản lý sản phẩm</a>
+                        <a class="<?= active_class($active, 'employees') ?>" href="<?= e(url('employees.php')) ?>">♙ Nhân viên & phân quyền</a>
+                        <a class="<?= active_class($active, 'statistics') ?>" href="<?= e(url('statistics.php')) ?>">◫ Báo cáo doanh thu</a>
+                    </div>
                 <?php endif; ?>
             </nav>
             <div class="sidebar-user">
                 <strong><?= e($user['full_name'] ?? '') ?></strong>
-                <small><?= is_admin() ? 'Quản lý' : 'Nhân viên' ?></small>
+                <small><?= e(role_name($user['role'] ?? null)) ?></small>
                 <a href="<?= e(url('index.php?action=logout')) ?>">Đăng xuất</a>
             </div>
         </aside>
         <main class="main-content">
             <header class="topbar">
-                <div><h1><?= e($title) ?></h1><p>Hệ thống quản lý bán hàng tại quầy</p></div>
-                <span class="role-badge"><?= is_admin() ? 'Quản lý' : 'Nhân viên' ?></span>
+                <div>
+                    <h1><?= e($title) ?></h1>
+                    <p>Phân tích - thiết kế theo quy trình bán hàng tại quầy</p>
+                </div>
+                <span class="role-badge"><?= e(role_name()) ?></span>
             </header>
             <?php if ($success): ?><div class="alert success"><?= e($success) ?></div><?php endif; ?>
             <?php if ($error): ?><div class="alert error"><?= e($error) ?></div><?php endif; ?>
