@@ -323,8 +323,7 @@ function render_footer(): void
     ?>
         </main>
     </div>
-<   script src="<?= e(url('assets/js/app.js') . '?v=3') ?>"></script>
-    <script src="<?= e(url('assets/js/app.js') . '?v=2') ?>"></script>
+    <script src="<?= e(url('assets/js/app.js') . '?v=3') ?>"></script>
     </body>
     </html>
     <?php
