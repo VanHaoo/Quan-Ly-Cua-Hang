@@ -5,7 +5,71 @@ document.addEventListener("DOMContentLoaded", () => {
     initCardHover();
     initToastAutoHide();
     initBetterConfirm();
+    injectDashboardLayoutFix();
 });
+function injectDashboardLayoutFix() {
+    if (document.getElementById("dashboard-layout-fix")) return;
+
+    const style = document.createElement("style");
+    style.id = "dashboard-layout-fix";
+    style.textContent = `
+        .dashboard-main-grid {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+            gap: 18px !important;
+            align-items: stretch !important;
+            margin-bottom: 18px !important;
+        }
+
+        .dashboard-main-grid > .panel {
+            height: 100% !important;
+            margin-bottom: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .dashboard-main-grid > .panel .panel-heading {
+            flex: 0 0 auto !important;
+        }
+
+        .dashboard-main-grid > .panel .table-wrap {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .dashboard-main-grid > .panel .table-wrap table {
+            height: 100% !important;
+        }
+
+        .dashboard-main-grid th,
+        .dashboard-main-grid td {
+            padding: 11px 12px !important;
+        }
+
+        .priority-panel {
+            border-color: #fed7aa !important;
+            background: linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.98)) !important;
+        }
+
+        .priority-panel .panel-heading h2::before {
+            content: "⚠️";
+            margin-right: 8px;
+        }
+
+        .priority-panel .table-wrap {
+            border-color: rgba(253, 186, 116, 0.55) !important;
+        }
+
+        @media (max-width: 1150px) {
+            .dashboard-main-grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    `;
+
+    document.head.appendChild(style);
+}
 
 /* Đồng hồ nhỏ ở góc phải topbar */
 function initClock() {

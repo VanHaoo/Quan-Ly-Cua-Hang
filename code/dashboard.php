@@ -69,58 +69,58 @@ render_header('Bảng điều khiển', 'dashboard');
     <article class="stat-card"><span>Khách thành viên</span><strong><?= $customerCount ?></strong><small>Phục vụ tích điểm</small></article>
 </div>
 
-<section class="panel priority-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Cảnh báo tồn kho</h2>
-            <p>Ưu tiên xử lý các sản phẩm đã chạm mức cảnh báo.</p>
+<div class="dashboard-main-grid">
+    <section class="panel priority-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Cảnh báo tồn kho</h2>
+                <p>Ưu tiên xử lý các sản phẩm đã chạm mức cảnh báo.</p>
+            </div>
+            <a class="btn secondary" href="<?= e(url('inventory.php')) ?>">Kiểm tra kho</a>
         </div>
-        <a class="btn secondary" href="<?= e(url('inventory.php')) ?>">Kiểm tra kho</a>
-    </div>
 
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Mã</th>
-                    <th>Sản phẩm</th>
-                    <th class="right">Tồn hiện tại</th>
-                    <th class="right">Mức cảnh báo</th>
-                    <th class="right">Hình ảnh</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                <?php if (!$lowStock): ?>
+        <div class="table-wrap">
+            <table>
+                <thead>
                     <tr>
-                        <td colspan="5" class="empty">Không có sản phẩm sắp hết.</td>
+                        <th>Mã</th>
+                        <th>Sản phẩm</th>
+                        <th class="right">Tồn</th>
+                        <th class="right">Cảnh báo</th>
+                        <th class="right">Hình</th>
                     </tr>
-                <?php endif; ?>
+                </thead>
 
-                <?php foreach ($lowStock as $row): ?>
-                    <?php $lowerName = strtolower((string) $row['name']); ?>
-                    <tr>
-                        <td><strong><?= e($row['code']) ?></strong></td>
-                        <td><?= e($row['name']) ?></td>
-                        <td class="right">
-                            <span class="stock low">
-                                <?= (int) $row['stock'] ?> <?= e($row['unit']) ?>
-                            </span>
-                        </td>
-                        <td class="right"><?= (int) $row['min_stock'] ?></td>
-                        <td class="right">
-                            <span class="product-thumb">
-                                <?= str_contains($lowerName, 'sữa') || str_contains($lowerName, 'sua') ? '🥛' : '🍟' ?>
-                            </span>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-</section>
+                <tbody>
+                    <?php if (!$lowStock): ?>
+                        <tr>
+                            <td colspan="5" class="empty compact-empty">Không có sản phẩm sắp hết.</td>
+                        </tr>
+                    <?php endif; ?>
 
-<div class="dashboard-lower-grid <?= $recentLogs ? '' : 'single' ?>">
+                    <?php foreach ($lowStock as $row): ?>
+                        <?php $lowerName = strtolower((string) $row['name']); ?>
+                        <tr>
+                            <td><strong><?= e($row['code']) ?></strong></td>
+                            <td><?= e($row['name']) ?></td>
+                            <td class="right">
+                                <span class="stock low">
+                                    <?= (int) $row['stock'] ?> <?= e($row['unit']) ?>
+                                </span>
+                            </td>
+                            <td class="right"><?= (int) $row['min_stock'] ?></td>
+                            <td class="right">
+                                <span class="product-thumb">
+                                    <?= str_contains($lowerName, 'sữa') || str_contains($lowerName, 'sua') ? '🥛' : '🍟' ?>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
     <section class="panel recent-panel">
         <div class="panel-heading">
             <div>
@@ -136,7 +136,6 @@ render_header('Bảng điều khiển', 'dashboard');
                     <tr>
                         <th>Mã</th>
                         <th>Khách hàng</th>
-                        <th>Nhân viên</th>
                         <th>Trạng thái</th>
                         <th class="right">Tổng tiền</th>
                     </tr>
@@ -145,7 +144,7 @@ render_header('Bảng điều khiển', 'dashboard');
                 <tbody>
                     <?php if (!$recentInvoices): ?>
                         <tr>
-                            <td colspan="5" class="empty compact-empty">Chưa có giao dịch.</td>
+                            <td colspan="4" class="empty compact-empty">Chưa có giao dịch.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -160,7 +159,6 @@ render_header('Bảng điều khiển', 'dashboard');
                                 </small>
                             </td>
                             <td><?= e($invoice['customer_name'] ?: 'Khách lẻ') ?></td>
-                            <td><?= e($invoice['full_name']) ?></td>
                             <td>
                                 <span class="status <?= e($invoice['status']) ?>">
                                     <?= $invoice['status'] === 'paid' ? 'Đã thanh toán' : 'Đã hủy' ?>
@@ -173,27 +171,27 @@ render_header('Bảng điều khiển', 'dashboard');
             </table>
         </div>
     </section>
-
-    <?php if ($recentLogs): ?>
-        <section class="panel activity-compact">
-            <div class="panel-heading">
-                <div>
-                    <h2>Nhật ký hoạt động</h2>
-                    <p>Thao tác mới nhất trong hệ thống</p>
-                </div>
-            </div>
-
-            <div class="activity-list compact">
-                <?php foreach ($recentLogs as $log): ?>
-                    <div>
-                        <strong><?= e($log['full_name'] ?: 'Hệ thống') ?></strong>
-                        <span><?= e($log['description']) ?></span>
-                        <small><?= date('d/m/Y H:i', strtotime($log['created_at'])) ?></small>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </section>
-    <?php endif; ?>
 </div>
+
+<?php if ($recentLogs): ?>
+    <section class="panel activity-compact dashboard-log-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Nhật ký hoạt động</h2>
+                <p>Thao tác mới nhất trong hệ thống</p>
+            </div>
+        </div>
+
+        <div class="activity-list compact">
+            <?php foreach ($recentLogs as $log): ?>
+                <div>
+                    <strong><?= e($log['full_name'] ?: 'Hệ thống') ?></strong>
+                    <span><?= e($log['description']) ?></span>
+                    <small><?= date('d/m/Y H:i', strtotime($log['created_at'])) ?></small>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+<?php endif; ?>
 
 <?php render_footer(); ?>

@@ -1425,3 +1425,505 @@ textarea:focus {
         box-shadow: none;
     }
 }
+/* ===== DASHBOARD BETTER LAYOUT ===== */
+
+.compact-hero {
+    min-height: 118px;
+    padding: 22px 28px;
+    margin-bottom: 18px;
+    align-items: center;
+    border-radius: 22px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+
+    background-image:
+        linear-gradient(90deg, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.88) 46%, rgba(255,255,255,0.18) 74%),
+        url("../img/hero-banner.png");
+
+    background-position:
+        center,
+        center center;
+
+    background-size:
+        cover,
+        112% 145%;
+
+    background-repeat:
+        no-repeat,
+        no-repeat;
+}
+
+.compact-hero h2 {
+    font-size: 22px;
+    margin: 6px 0 6px;
+}
+
+.compact-hero p {
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.compact-hero .eyebrow {
+    font-size: 11px;
+}
+
+.priority-panel {
+    border-color: #fed7aa;
+    background:
+        linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.priority-panel .panel-heading h2::before {
+    content: "⚠️";
+    margin-right: 8px;
+}
+
+.priority-panel .table-wrap {
+    border-color: rgba(253, 186, 116, 0.55);
+}
+
+.dashboard-lower-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(330px, 0.8fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.dashboard-lower-grid.single {
+    grid-template-columns: 1fr;
+}
+
+.dashboard-lower-grid .panel {
+    margin-bottom: 0;
+}
+
+.compact-empty {
+    height: 105px;
+}
+
+.activity-compact {
+    min-height: auto;
+}
+
+.activity-list.compact {
+    display: grid;
+    gap: 8px;
+}
+
+.activity-list.compact div {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.activity-list.compact div:last-child {
+    border-bottom: 0;
+}
+
+.activity-list.compact strong {
+    color: #0f172a;
+}
+
+.activity-list.compact span {
+    color: #475569;
+    line-height: 1.45;
+}
+
+.activity-list.compact small {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.sidebar-user {
+    position: relative;
+    margin-top: 28px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.sidebar-user::before {
+    content: "Tài khoản";
+    position: absolute;
+    top: 9px;
+    left: 14px;
+    font-size: 11px;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+}
+
+@media (max-width: 1150px) {
+    .dashboard-lower-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* ===== DASHBOARD BETTER LAYOUT ===== */
+
+.compact-hero {
+    min-height: 118px;
+    padding: 22px 28px;
+    margin-bottom: 18px;
+    align-items: center;
+    border-radius: 22px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+}
+
+.compact-hero h2 {
+    font-size: 22px;
+    margin: 6px 0 6px;
+}
+
+.compact-hero p {
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.compact-hero .eyebrow {
+    font-size: 11px;
+}
+
+.priority-panel {
+    border-color: #fed7aa;
+    background:
+        linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.priority-panel .panel-heading h2::before {
+    content: "⚠️";
+    margin-right: 8px;
+}
+
+.priority-panel .table-wrap {
+    border-color: rgba(253, 186, 116, 0.55);
+}
+
+.dashboard-lower-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(330px, 0.8fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.dashboard-lower-grid.single {
+    grid-template-columns: 1fr;
+}
+
+.dashboard-lower-grid .panel {
+    margin-bottom: 0;
+}
+
+.compact-empty {
+    height: 105px;
+}
+
+.activity-compact {
+    min-height: auto;
+}
+
+.activity-list.compact {
+    display: grid;
+    gap: 8px;
+}
+
+.activity-list.compact div {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.activity-list.compact div:last-child {
+    border-bottom: 0;
+}
+
+.activity-list.compact strong {
+    color: #0f172a;
+}
+
+.activity-list.compact span {
+    color: #475569;
+    line-height: 1.45;
+}
+
+.activity-list.compact small {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.sidebar-user {
+    position: relative;
+    margin-top: 28px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.sidebar-user::before {
+    content: "Tài khoản";
+    position: absolute;
+    top: 9px;
+    left: 14px;
+    font-size: 11px;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+}
+
+@media (max-width: 1150px) {
+    .dashboard-lower-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* ===== FINAL DASHBOARD COMPACT FIX ===== */
+
+/* Thu nhỏ banner thêm nữa */
+.compact-hero {
+    min-height: 96px !important;
+    padding: 16px 22px !important;
+    margin-bottom: 14px !important;
+    border-radius: 18px !important;
+}
+
+.compact-hero h2 {
+    font-size: 19px !important;
+    margin: 4px 0 4px !important;
+    max-width: 520px;
+}
+
+.compact-hero p {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+    max-width: 520px;
+}
+
+.compact-hero .eyebrow {
+    font-size: 10px !important;
+}
+
+.compact-hero .hero-actions {
+    gap: 8px;
+    min-width: 150px;
+}
+
+.compact-hero .btn {
+    padding: 9px 13px;
+    border-radius: 11px;
+    font-size: 14px;
+}
+
+/* Thẻ số liệu gọn hơn */
+.stats-grid {
+    gap: 12px !important;
+    margin-bottom: 14px !important;
+}
+
+.stat-card {
+    min-height: 94px !important;
+    padding: 15px !important;
+    border-radius: 16px !important;
+}
+
+.stat-card strong {
+    font-size: 25px !important;
+    margin: 6px 0 3px !important;
+}
+
+.stat-card span,
+.stat-card small {
+    font-size: 13px !important;
+}
+
+.stat-card::after {
+    font-size: 34px !important;
+    right: 14px !important;
+    bottom: 12px !important;
+}
+
+/* Cảnh báo tồn kho nổi bật nhưng thấp hơn */
+.priority-panel {
+    padding: 16px !important;
+    margin-bottom: 14px !important;
+    border-radius: 18px !important;
+}
+
+.priority-panel .panel-heading {
+    margin-bottom: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.priority-panel .panel-heading h2 {
+    font-size: 20px !important;
+}
+
+.priority-panel .panel-heading p {
+    font-size: 13px !important;
+}
+
+.priority-panel th,
+.priority-panel td {
+    padding: 10px 12px !important;
+}
+
+.priority-panel .product-thumb {
+    width: 34px;
+    height: 34px;
+    font-size: 22px;
+    border-radius: 10px;
+}
+
+/* Hai khối dưới gọn hơn */
+.dashboard-lower-grid {
+    gap: 14px !important;
+    grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr) !important;
+}
+
+.dashboard-lower-grid .panel {
+    padding: 16px !important;
+    border-radius: 18px !important;
+}
+
+.dashboard-lower-grid .panel-heading {
+    margin-bottom: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.dashboard-lower-grid .panel-heading h2 {
+    font-size: 20px !important;
+}
+
+.dashboard-lower-grid .panel-heading p {
+    font-size: 13px !important;
+}
+
+.recent-panel th,
+.recent-panel td {
+    padding: 10px 12px !important;
+}
+
+.compact-empty {
+    height: 72px !important;
+    padding: 18px !important;
+}
+
+.empty::before {
+    font-size: 30px !important;
+    margin-bottom: 5px !important;
+}
+
+/* Nhật ký hoạt động nhỏ lại */
+.activity-compact .activity-list.compact div {
+    padding: 8px 0 !important;
+}
+
+.activity-compact strong,
+.activity-compact span {
+    font-size: 13px;
+}
+
+.activity-compact small {
+    font-size: 11px !important;
+}
+
+/* Sidebar bớt thô */
+.sidebar {
+    padding: 18px 12px !important;
+}
+
+.side-menu,
+.side-nav,
+.sidebar nav {
+    gap: 18px !important;
+}
+
+.side-menu a,
+.nav-group a,
+.sidebar nav a {
+    min-height: 38px !important;
+    padding: 9px 11px !important;
+    font-size: 14px !important;
+}
+
+.menu-title {
+    font-size: 11px !important;
+}
+
+.sidebar-user {
+    margin-top: 22px !important;
+    padding: 22px 12px 12px !important;
+}
+/* ===== DASHBOARD SIDE BY SIDE LAYOUT ===== */
+
+.dashboard-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    margin-bottom: 18px;
+}
+
+.dashboard-main-grid .panel {
+    margin-bottom: 0;
+}
+
+.dashboard-main-grid th,
+.dashboard-main-grid td {
+    padding: 11px 12px;
+}
+
+.priority-panel {
+    border-color: #fed7aa;
+    background:
+        linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.priority-panel .panel-heading h2::before {
+    content: "⚠️";
+    margin-right: 8px;
+}
+
+.priority-panel .table-wrap {
+    border-color: rgba(253, 186, 116, 0.55);
+}
+
+.compact-empty {
+    height: 92px;
+}
+
+.dashboard-log-panel {
+    margin-top: 0;
+}
+
+.activity-list.compact {
+    display: grid;
+    gap: 8px;
+}
+
+.activity-list.compact div {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.activity-list.compact div:last-child {
+    border-bottom: 0;
+}
+
+.activity-list.compact small {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+@media (max-width: 1150px) {
+    .dashboard-main-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .activity-list.compact div {
+        grid-template-columns: 1fr;
+    }
+}
