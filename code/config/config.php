@@ -48,7 +48,16 @@ function url(string $path = ''): string
 {
     $base = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
     $base = $base === '/' ? '' : rtrim($base, '/');
+
     return $base . ($path !== '' ? '/' . ltrim($path, '/') : '');
+}
+
+function asset(string $path): string
+{
+    $file = __DIR__ . '/../' . ltrim($path, '/');
+    $version = file_exists($file) ? filemtime($file) : time();
+
+    return url($path) . '?v=' . $version;
 }
 
 function redirect(string $path): never
@@ -80,6 +89,7 @@ function is_logged_in(): bool
 function has_role(string ...$roles): bool
 {
     $role = current_user()['role'] ?? '';
+
     return in_array($role, $roles, true);
 }
 
@@ -87,6 +97,7 @@ function is_admin(): bool
 {
     return has_role('admin');
 }
+
 function user_role(): string
 {
     return (string) (current_user()['role'] ?? '');
@@ -115,6 +126,7 @@ function role_label(): string
 function role_name(?string $role = null): string
 {
     $role ??= current_user()['role'] ?? '';
+
     return match ($role) {
         'admin' => 'Quản lý',
         'cashier' => 'Thu ngân',
@@ -139,6 +151,7 @@ function require_admin(): void
 function require_roles(string ...$roles): void
 {
     require_login();
+
     if (!has_role(...$roles)) {
         flash('error', 'Bạn không có quyền sử dụng chức năng này.');
         redirect('dashboard.php');
@@ -150,12 +163,14 @@ function csrf_token(): string
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
+
     return (string) $_SESSION['csrf_token'];
 }
 
 function verify_csrf_value(?string $token): void
 {
     $sessionToken = (string) ($_SESSION['csrf_token'] ?? '');
+
     if ($token === null || $token === '' || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
         http_response_code(419);
         exit('Phiên làm việc không hợp lệ. Hãy tải lại trang và thử lại.');
@@ -179,8 +194,10 @@ function flash(string $key, ?string $message = null): ?string
         $_SESSION['flash'][$key] = $message;
         return null;
     }
+
     $value = $_SESSION['flash'][$key] ?? null;
     unset($_SESSION['flash'][$key]);
+
     return is_string($value) ? $value : null;
 }
 
@@ -206,11 +223,7 @@ function render_header(string $title, string $active = ''): void
     $error = flash('error');
 
     $role = user_role();
-    $roleLabel = match ($role) {
-        'admin' => 'Quản lý',
-        'warehouse' => 'Nhân viên kho',
-        default => 'Thu ngân',
-    };
+    $roleLabel = role_name($role);
     ?>
     <!doctype html>
     <html lang="vi">
@@ -218,7 +231,7 @@ function render_header(string $title, string $active = ''): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= e($title) ?> | Quản lý bán hàng</title>
-        <link rel="stylesheet" href="<?= e(url('assets/css/style.css') . '?v=32') ?>">
+        <link rel="stylesheet" href="<?= e(asset('assets/css/style.css')) ?>">
     </head>
 
     <body>
@@ -323,7 +336,7 @@ function render_footer(): void
     ?>
         </main>
     </div>
-    <script src="<?= e(url('assets/js/app.js') . '?v=3') ?>"></script>
+    <script src="<?= e(asset('assets/js/app.js')) ?>"></script>
     </body>
     </html>
     <?php
