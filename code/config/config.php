@@ -218,7 +218,7 @@ function render_header(string $title, string $active = ''): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= e($title) ?> | Quản lý bán hàng</title>
-        <link rel="stylesheet" href="<?= e(url('assets/css/style.css') . '?v=30') ?>">
+        <link rel="stylesheet" href="<?= e(url('assets/css/style.css') . '?v=31') ?>">
     </head>
 
     <body>
@@ -332,7 +332,7 @@ function render_footer(): void
             });
         });
     </script>
-    <script src="<?= e(url('assets/js/app.js') . '?v=1') ?>"></script>
+    <script src="<?= e(url('assets/js/app.js') . '?v=2') ?>"></script>
     </body>
     </html>
     <?php

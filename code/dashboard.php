@@ -42,15 +42,22 @@ if ($isAdmin) {
 
 render_header('Bảng điều khiển', 'dashboard');
 ?>
-<div class="hero-panel">
-    <div>
-        <span class="eyebrow">Hệ thống quản lý bán hàng tại quầy</span>
-        <h2>Theo dõi nhanh bán hàng, hóa đơn, khách hàng và tồn kho.</h2>
-        <p>Giao diện được chia theo đúng nhóm chức năng trong sơ đồ Use Case: thu ngân, quản lý, nhân viên kho và khách hàng.</p>
+<div class="hero-panel compact-hero" id="dashboardHero">
+
+    <div class="hero-content">
+        <span class="eyebrow">Tổng quan bán hàng</span>
+        <h2>Theo dõi nhanh doanh thu, hóa đơn và tồn kho.</h2>
+        <p>Các chỉ số chính của cửa hàng được cập nhật trong ngày.</p>
     </div>
+
     <div class="hero-actions">
-        <?php if (has_role('admin','cashier')): ?><a class="btn primary" href="<?= e(url('sales.php')) ?>">Tạo đơn bán hàng</a><?php endif; ?>
-        <?php if (has_role('admin','warehouse')): ?><a class="btn secondary" href="<?= e(url('stock_import.php')) ?>">Nhập hàng</a><?php endif; ?>
+        <?php if (has_role('admin','cashier')): ?>
+            <a class="btn primary" href="<?= e(url('sales.php')) ?>">Tạo đơn bán hàng</a>
+        <?php endif; ?>
+
+        <?php if (has_role('admin','warehouse')): ?>
+            <a class="btn secondary" href="<?= e(url('stock_import.php')) ?>">Nhập hàng</a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -62,35 +69,131 @@ render_header('Bảng điều khiển', 'dashboard');
     <article class="stat-card"><span>Khách thành viên</span><strong><?= $customerCount ?></strong><small>Phục vụ tích điểm</small></article>
 </div>
 
-<div class="two-column equal">
-    <section class="panel">
-        <div class="panel-heading"><div><h2>Giao dịch gần đây</h2><p>Các hóa đơn mới nhất</p></div><a class="btn secondary" href="<?= e(url('invoices.php')) ?>">Xem hóa đơn</a></div>
-        <div class="table-wrap"><table><thead><tr><th>Mã</th><th>Khách hàng</th><th>Nhân viên</th><th>Trạng thái</th><th class="right">Tổng tiền</th></tr></thead><tbody>
-        <?php if (!$recentInvoices): ?><tr><td colspan="5" class="empty">Chưa có giao dịch.</td></tr><?php endif; ?>
-        <?php foreach ($recentInvoices as $invoice): ?><tr>
-            <td><a href="<?= e(url('invoices.php?id=' . $invoice['id'])) ?>"><strong><?= e($invoice['invoice_code']) ?></strong></a><small class="block muted"><?= date('d/m/Y H:i', strtotime($invoice['created_at'])) ?></small></td>
-            <td><?= e($invoice['customer_name'] ?: 'Khách lẻ') ?></td>
-            <td><?= e($invoice['full_name']) ?></td>
-            <td><span class="status <?= e($invoice['status']) ?>"><?= $invoice['status']==='paid'?'Đã thanh toán':'Đã hủy' ?></span></td>
-            <td class="right"><?= money($invoice['total_amount']) ?></td>
-        </tr><?php endforeach; ?></tbody></table></div>
-    </section>
+<section class="panel priority-panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Cảnh báo tồn kho</h2>
+            <p>Ưu tiên xử lý các sản phẩm đã chạm mức cảnh báo.</p>
+        </div>
+        <a class="btn secondary" href="<?= e(url('inventory.php')) ?>">Kiểm tra kho</a>
+    </div>
 
-    <section class="panel">
-        <div class="panel-heading"><div><h2>Cảnh báo tồn kho</h2><p>Sản phẩm cần nhập thêm</p></div><a class="btn secondary" href="<?= e(url('inventory.php')) ?>">Kiểm tra kho</a></div>
-        <div class="table-wrap"><table><thead><tr><th>Mã</th><th>Sản phẩm</th><th class="right">Tồn</th><th class="right">Mức cảnh báo</th></tr></thead><tbody>
-        <?php if (!$lowStock): ?><tr><td colspan="4" class="empty">Không có sản phẩm sắp hết.</td></tr><?php endif; ?>
-        <?php foreach ($lowStock as $row): ?><tr><td><?= e($row['code']) ?></td><td><?= e($row['name']) ?></td><td class="right"><span class="stock low"><?= (int)$row['stock'] ?> <?= e($row['unit']) ?></span></td><td class="right"><?= (int)$row['min_stock'] ?></td></tr><?php endforeach; ?>
-        </tbody></table></div>
-    </section>
-</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã</th>
+                    <th>Sản phẩm</th>
+                    <th class="right">Tồn hiện tại</th>
+                    <th class="right">Mức cảnh báo</th>
+                    <th class="right">Hình ảnh</th>
+                </tr>
+            </thead>
 
-<?php if ($recentLogs): ?>
-<section class="panel">
-    <div class="panel-heading"><div><h2>Nhật ký hoạt động</h2><p>Theo dõi thao tác quan trọng trong hệ thống</p></div></div>
-    <div class="activity-list">
-        <?php foreach ($recentLogs as $log): ?><div><strong><?= e($log['full_name'] ?: 'Hệ thống') ?></strong><span><?= e($log['description']) ?></span><small><?= date('d/m/Y H:i', strtotime($log['created_at'])) ?></small></div><?php endforeach; ?>
+            <tbody>
+                <?php if (!$lowStock): ?>
+                    <tr>
+                        <td colspan="5" class="empty">Không có sản phẩm sắp hết.</td>
+                    </tr>
+                <?php endif; ?>
+
+                <?php foreach ($lowStock as $row): ?>
+                    <?php $lowerName = strtolower((string) $row['name']); ?>
+                    <tr>
+                        <td><strong><?= e($row['code']) ?></strong></td>
+                        <td><?= e($row['name']) ?></td>
+                        <td class="right">
+                            <span class="stock low">
+                                <?= (int) $row['stock'] ?> <?= e($row['unit']) ?>
+                            </span>
+                        </td>
+                        <td class="right"><?= (int) $row['min_stock'] ?></td>
+                        <td class="right">
+                            <span class="product-thumb">
+                                <?= str_contains($lowerName, 'sữa') || str_contains($lowerName, 'sua') ? '🥛' : '🍟' ?>
+                            </span>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 </section>
-<?php endif; ?>
+
+<div class="dashboard-lower-grid <?= $recentLogs ? '' : 'single' ?>">
+    <section class="panel recent-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Giao dịch gần đây</h2>
+                <p>Các hóa đơn mới nhất</p>
+            </div>
+            <a class="btn secondary" href="<?= e(url('invoices.php')) ?>">Xem hóa đơn</a>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã</th>
+                        <th>Khách hàng</th>
+                        <th>Nhân viên</th>
+                        <th>Trạng thái</th>
+                        <th class="right">Tổng tiền</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <?php if (!$recentInvoices): ?>
+                        <tr>
+                            <td colspan="5" class="empty compact-empty">Chưa có giao dịch.</td>
+                        </tr>
+                    <?php endif; ?>
+
+                    <?php foreach ($recentInvoices as $invoice): ?>
+                        <tr>
+                            <td>
+                                <a href="<?= e(url('invoices.php?id=' . $invoice['id'])) ?>">
+                                    <strong><?= e($invoice['invoice_code']) ?></strong>
+                                </a>
+                                <small class="block muted">
+                                    <?= date('d/m/Y H:i', strtotime($invoice['created_at'])) ?>
+                                </small>
+                            </td>
+                            <td><?= e($invoice['customer_name'] ?: 'Khách lẻ') ?></td>
+                            <td><?= e($invoice['full_name']) ?></td>
+                            <td>
+                                <span class="status <?= e($invoice['status']) ?>">
+                                    <?= $invoice['status'] === 'paid' ? 'Đã thanh toán' : 'Đã hủy' ?>
+                                </span>
+                            </td>
+                            <td class="right"><?= money($invoice['total_amount']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <?php if ($recentLogs): ?>
+        <section class="panel activity-compact">
+            <div class="panel-heading">
+                <div>
+                    <h2>Nhật ký hoạt động</h2>
+                    <p>Thao tác mới nhất trong hệ thống</p>
+                </div>
+            </div>
+
+            <div class="activity-list compact">
+                <?php foreach ($recentLogs as $log): ?>
+                    <div>
+                        <strong><?= e($log['full_name'] ?: 'Hệ thống') ?></strong>
+                        <span><?= e($log['description']) ?></span>
+                        <small><?= date('d/m/Y H:i', strtotime($log['created_at'])) ?></small>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php endif; ?>
+</div>
+
 <?php render_footer(); ?>
