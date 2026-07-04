@@ -102,12 +102,23 @@ function checkout_order(PDO $pdo, array &$cart, array $input, int $userId, strin
         }
 
         $totalAmount = max(0, $subtotalAmount - $discountAmount);
-        if ($customerMoney === false || $customerMoney < $totalAmount) throw new RuntimeException('Tiền khách đưa chưa đủ để thanh toán.');
+
+        if ($paymentMethod === 'cash') {
+            if ($customerMoney === false || $customerMoney < $totalAmount) {
+                throw new RuntimeException('Tiền khách đưa chưa đủ để thanh toán.');
+            }
+
+            $changeMoney = $customerMoney - $totalAmount;
+        } else {
+            $customerMoney = $totalAmount;
+            $changeMoney = 0;
+        }
+
         $pointsEarned = $customerId !== null ? (int) floor($totalAmount / 10000) : 0;
         $invoiceCode = 'HD' . date('YmdHis') . random_int(10, 99);
 
         $stmt = $pdo->prepare("INSERT INTO invoices(invoice_code,checkout_token,user_id,customer_id,customer_name,customer_phone,subtotal_amount,discount_amount,total_amount,voucher_id,points_earned,customer_money,change_money,payment_method,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'paid')");
-        $stmt->execute([$invoiceCode,$postedToken,$userId,$customerId,$customerName,$customerPhone!==''?$customerPhone:null,$subtotalAmount,$discountAmount,$totalAmount,$voucherId,$pointsEarned,$customerMoney,$customerMoney-$totalAmount,$paymentMethod]);
+        $stmt->execute([$invoiceCode,$postedToken,$userId,$customerId,$customerName,$customerPhone!==''?$customerPhone:null,$subtotalAmount,$discountAmount,$totalAmount,$voucherId,$pointsEarned,$customerMoney,$changeMoney,$paymentMethod]);
         $invoiceId = (int) $pdo->lastInsertId();
 
         $detail = $pdo->prepare('INSERT INTO invoice_details(invoice_id,product_id,product_code,product_name,quantity,price,subtotal) VALUES(?,?,?,?,?,?,?)');

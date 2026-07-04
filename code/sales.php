@@ -324,21 +324,32 @@ render_header('Bán hàng tại quầy', 'sales');
 
                 <label>
                     Phương thức thanh toán
-                    <select name="payment_method">
+                    <select id="payment-method" name="payment_method">
                         <option value="cash">Tiền mặt</option>
-                        <option value="transfer">Chuyển khoản</option>
-                        <option value="qr">QR</option>
+                        <option value="transfer">Chuyển khoản/QR</option>
                     </select>
                 </label>
 
-                <label>
-                    Tiền khách đưa
-                    <input id="customer-money" type="number" name="customer_money" min="<?= (int) ceil($subtotalAmount) ?>" step="1000" required>
-                </label>
+                <div id="cash-payment-fields">
+                    <label>
+                        Tiền khách đưa
+                        <input id="customer-money" type="number" name="customer_money" min="<?= (int) ceil($subtotalAmount) ?>" step="1000">
+                    </label>
 
-                <div class="change-preview">
-                    <span>Tiền thừa dự kiến</span>
-                    <strong id="change-value">0 đ</strong>
+                    <div class="change-preview">
+                        <span>Tiền thừa dự kiến</span>
+                        <strong id="change-value">0 đ</strong>
+                    </div>
+                </div>
+
+                <div id="non-cash-payment-box" class="non-cash-payment-box" hidden>
+                    <div class="qr-preview">QR</div>
+
+                    <div>
+                        <strong>Thanh toán chuyển khoản/QR</strong>
+                        <p>Khách chuyển hoặc quét QR đúng số tiền: <b id="non-cash-amount"><?= money($subtotalAmount) ?></b></p>
+                        <small>Thu ngân kiểm tra giao dịch trước khi bấm lập hóa đơn.</small>
+                    </div>
                 </div>
             </div>
 
@@ -377,6 +388,10 @@ render_header('Bán hàng tại quầy', 'sales');
     const checkoutTotal = document.getElementById('checkout-total');
     const moneyInput = document.getElementById('customer-money');
     const changeValue = document.getElementById('change-value');
+    const paymentMethod = document.getElementById('payment-method');
+    const cashPaymentFields = document.getElementById('cash-payment-fields');
+    const nonCashPaymentBox = document.getElementById('non-cash-payment-box');
+    const nonCashAmount = document.getElementById('non-cash-amount');
     const lookupButton = document.getElementById('lookup-customer');
     const vouchers = new Map();
     let payable = subtotal;
@@ -426,8 +441,27 @@ render_header('Bán hàng tại quầy', 'sales');
         checkoutTotal.textContent = formatMoney(payable);
 
         moneyInput.min = String(Math.ceil(payable));
-        const given = Number(moneyInput.value || 0);
-        changeValue.textContent = formatMoney(Math.max(0, given - payable));
+
+        if (paymentMethod.value === 'cash') {
+            cashPaymentFields.hidden = false;
+            nonCashPaymentBox.hidden = true;
+
+            moneyInput.disabled = false;
+            moneyInput.required = true;
+
+            const given = Number(moneyInput.value || 0);
+            changeValue.textContent = formatMoney(Math.max(0, given - payable));
+        } else {
+            cashPaymentFields.hidden = true;
+            nonCashPaymentBox.hidden = false;
+
+            moneyInput.required = false;
+            moneyInput.disabled = true;
+            moneyInput.value = '';
+
+            nonCashAmount.textContent = formatMoney(payable);
+            changeValue.textContent = '0 đ';
+        }
     }
 
     async function lookupCustomer() {
@@ -493,6 +527,7 @@ render_header('Bán hàng tại quầy', 'sales');
     phoneInput?.addEventListener('blur', lookupCustomer);
     voucherInput?.addEventListener('input', refreshPayment);
     moneyInput?.addEventListener('input', refreshPayment);
+    paymentMethod?.addEventListener('change', refreshPayment);
 
     refreshPayment();
 
