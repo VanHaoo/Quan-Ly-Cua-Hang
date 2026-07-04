@@ -6,6 +6,15 @@ require_roles('admin', 'warehouse');
 
 $pdo = db();
 
+$pdo->exec("
+    CREATE TABLE IF NOT EXISTS hidden_suppliers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        supplier VARCHAR(255) NOT NULL UNIQUE,
+        hidden_by INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+");
+
 function stock_import_has_column(PDO $pdo, string $table, string $column): bool
 {
     static $cache = [];
@@ -31,6 +40,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
     try {
+        $action = (string) ($_POST['action'] ?? 'create_import');
+
+        if ($action === 'hide_supplier') {
+            $supplierToHide = trim((string) ($_POST['supplier_name'] ?? ''));
+
+            if ($supplierToHide === '') {
+                throw new RuntimeException('Không tìm thấy nhà cung cấp cần xóa.');
+            }
+
+            $stmt = $pdo->prepare('INSERT IGNORE INTO hidden_suppliers(supplier, hidden_by) VALUES(?, ?)');
+            $stmt->execute([$supplierToHide, (int) current_user()['id']]);
+
+            log_activity('supplier_hide', 'Ẩn nhà cung cấp ' . $supplierToHide . ' khỏi danh sách nhập hàng');
+            flash('success', 'Đã xóa nhà cung cấp "' . $supplierToHide . '" khỏi danh sách chọn.');
+
+            redirect('stock_import.php');
+        }
+
+        if ($action !== 'create_import') {
+            throw new RuntimeException('Thao tác không hợp lệ.');
+        }
+
         $productIds = $_POST['product_id'] ?? [];
         $quantities = $_POST['quantity'] ?? [];
         $costPrices = $_POST['cost_price'] ?? [];
@@ -151,6 +182,7 @@ if ($detailId > 0) {
 
     render_header('Chi tiết phiếu nhập', 'stock_import');
     ?>
+
     <section class="panel">
         <div class="panel-heading responsive">
             <div>
@@ -195,6 +227,7 @@ if ($detailId > 0) {
             </table>
         </div>
     </section>
+
     <?php
     render_footer();
     exit;
@@ -205,7 +238,15 @@ $products = $pdo
     ->fetchAll();
 
 $suppliers = $pdo
-    ->query("SELECT DISTINCT supplier FROM stock_imports WHERE supplier IS NOT NULL AND supplier <> '' ORDER BY supplier")
+    ->query("
+        SELECT DISTINCT si.supplier
+        FROM stock_imports si
+        LEFT JOIN hidden_suppliers hs ON hs.supplier = si.supplier
+        WHERE si.supplier IS NOT NULL
+        AND si.supplier <> ''
+        AND hs.id IS NULL
+        ORDER BY si.supplier
+    ")
     ->fetchAll(PDO::FETCH_COLUMN);
 
 $hasCreatedAt = stock_import_has_column($pdo, 'stock_imports', 'created_at');
@@ -274,15 +315,24 @@ $importsSql = "
     ORDER BY si.id DESC
     LIMIT 20
 ";
+
 $stmt = $pdo->prepare($importsSql);
+
 foreach ($params as $key => $value) {
     $stmt->bindValue($key, $value, PDO::PARAM_STR);
 }
+
 $stmt->execute();
 $imports = $stmt->fetchAll();
 
 render_header('Nhập hàng', 'stock_import');
 ?>
+
+<form method="post" id="hide-supplier-form" hidden>
+    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+    <input type="hidden" name="action" value="hide_supplier">
+    <input type="hidden" name="supplier_name" id="hide-supplier-name">
+</form>
 
 <div class="two-column stock-import-layout">
     <section class="panel form-panel">
@@ -295,16 +345,32 @@ render_header('Nhập hàng', 'stock_import');
 
         <form method="post" class="form-grid one-column stock-import-form" id="stock-import-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="create_import">
 
             <label>
                 Nhà cung cấp
-                <select name="supplier" id="supplier-select" required>
-                    <option value="">-- Chọn nhà cung cấp --</option>
-                    <?php foreach ($suppliers as $supplier): ?>
-                        <option value="<?= e($supplier) ?>"><?= e($supplier) ?></option>
-                    <?php endforeach; ?>
-                    <option value="__new">+ Thêm nhà cung cấp mới</option>
-                </select>
+                <div class="supplier-select-row">
+                    <select name="supplier" id="supplier-select" required>
+                        <option value="">-- Chọn nhà cung cấp --</option>
+
+                        <?php foreach ($suppliers as $supplier): ?>
+                            <option value="<?= e($supplier) ?>"><?= e($supplier) ?></option>
+                        <?php endforeach; ?>
+
+                        <option value="__new">+ Thêm nhà cung cấp mới</option>
+                    </select>
+
+                    <button
+                        type="button"
+                        class="btn danger supplier-hide-trigger"
+                        id="hide-supplier-btn"
+                        title="Xóa nhà cung cấp khỏi danh sách"
+                    >
+                        Xóa
+                    </button>
+                </div>
+
+                <small class="muted">Xóa chỉ ẩn khỏi danh sách chọn, không xóa phiếu nhập cũ.</small>
             </label>
 
             <label id="new-supplier-field" hidden>
@@ -443,7 +509,9 @@ render_header('Nhập hàng', 'stock_import');
                             <td><?= date('d/m/Y H:i', strtotime($import['created_at'])) ?></td>
                             <td class="right"><?= money((float) $import['total_amount']) ?></td>
                             <td class="right">
-                                <a class="btn small outline" href="<?= e(url('stock_import.php?id=' . (int) $import['id'])) ?>">Chi tiết</a>
+                                <a class="btn small outline" href="<?= e(url('stock_import.php?id=' . (int) $import['id'])) ?>">
+                                    Chi tiết
+                                </a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -458,6 +526,10 @@ render_header('Nhập hàng', 'stock_import');
     const supplierSelect = document.getElementById('supplier-select');
     const newSupplierField = document.getElementById('new-supplier-field');
     const newSupplierInput = document.getElementById('new-supplier-input');
+    const hideSupplierButton = document.getElementById('hide-supplier-btn');
+    const hideSupplierForm = document.getElementById('hide-supplier-form');
+    const hideSupplierName = document.getElementById('hide-supplier-name');
+
     const rowsBox = document.getElementById('import-item-rows');
     const addRowButton = document.getElementById('add-import-row');
     const totalEl = document.getElementById('import-total');
@@ -467,8 +539,11 @@ render_header('Nhập hàng', 'stock_import');
 
     function toggleSupplierInput() {
         const isNew = supplierSelect.value === '__new';
+        const canHide = supplierSelect.value !== '' && supplierSelect.value !== '__new';
+
         newSupplierField.hidden = !isNew;
         newSupplierInput.required = isNew;
+        hideSupplierButton.disabled = !canHide;
 
         if (isNew) {
             newSupplierInput.focus();
@@ -476,6 +551,22 @@ render_header('Nhập hàng', 'stock_import');
             newSupplierInput.value = '';
         }
     }
+
+    hideSupplierButton?.addEventListener('click', () => {
+        const supplier = supplierSelect.value;
+
+        if (!supplier || supplier === '__new') {
+            alert('Vui lòng chọn nhà cung cấp cần xóa.');
+            return;
+        }
+
+        const ok = confirm(`Xóa nhà cung cấp "${supplier}" khỏi danh sách chọn? Lịch sử phiếu nhập cũ vẫn được giữ lại.`);
+
+        if (!ok) return;
+
+        hideSupplierName.value = supplier;
+        hideSupplierForm.submit();
+    });
 
     function validateNumber(input) {
         const value = Number(input.value || 0);
