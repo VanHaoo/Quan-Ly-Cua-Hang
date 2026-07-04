@@ -359,6 +359,157 @@ render_header('Bảng điều khiển', 'dashboard');
             grid-template-columns: 1fr;
         }
     }
+/* ===== DASHBOARD REVENUE CHART FIX ===== */
+
+.clean-bar-chart {
+    height: 230px;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+    padding-top: 12px;
+}
+
+.clean-chart-item {
+    height: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 8px;
+    text-align: center;
+}
+
+.clean-chart-value {
+    min-height: 18px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.clean-chart-track {
+    height: 100%;
+    min-height: 150px;
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    border-radius: 999px;
+    background: #eff6ff;
+    overflow: hidden;
+    border: 1px solid #dbeafe;
+}
+
+.clean-chart-bar {
+    width: 100%;
+    height: var(--bar-height);
+    min-height: 6px;
+    border-radius: 999px 999px 0 0;
+    background: linear-gradient(180deg, #38bdf8, #2563eb);
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.24);
+}
+
+.clean-chart-item.is-zero .clean-chart-bar {
+    background: #cbd5e1;
+    box-shadow: none;
+    opacity: 0.65;
+}
+
+.clean-chart-item.has-value .clean-chart-value {
+    color: #0f172a;
+}
+
+.clean-chart-label {
+    color: #475569;
+    font-size: 13px;
+    font-weight: 750;
+}
+
+@media (max-width: 800px) {
+    .clean-bar-chart {
+        overflow-x: auto;
+        grid-template-columns: repeat(7, minmax(80px, 1fr));
+    }
+}
+/* ===== SIMPLE COLUMN REVENUE CHART ===== */
+
+.simple-column-chart {
+    height: 260px;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 14px;
+    align-items: end;
+    padding: 14px 6px 4px;
+}
+
+.simple-column {
+    height: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: 24px 1fr 24px;
+    gap: 8px;
+    text-align: center;
+}
+
+.simple-column-value {
+    color: #334155;
+    font-size: 13px;
+    font-weight: 850;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.simple-column-track {
+    height: 100%;
+    min-height: 160px;
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    padding: 0 6px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #f8fbff, #eff6ff);
+    border: 1px solid #dbeafe;
+}
+
+.simple-column-bar {
+    width: 100%;
+    max-width: 52px;
+    min-height: 6px;
+    border-radius: 12px 12px 4px 4px;
+    background: linear-gradient(180deg, #38bdf8, #2563eb);
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+    transition: 0.2s ease;
+}
+
+.simple-column.has-value:hover .simple-column-bar {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 26px rgba(37, 99, 235, 0.32);
+}
+
+.simple-column.is-zero .simple-column-value {
+    color: #94a3b8;
+}
+
+.simple-column.is-zero .simple-column-bar {
+    background: #cbd5e1;
+    box-shadow: none;
+    opacity: 0.7;
+}
+
+.simple-column-label {
+    color: #475569;
+    font-size: 13px;
+    font-weight: 850;
+}
+
+@media (max-width: 800px) {
+    .simple-column-chart {
+        overflow-x: auto;
+        grid-template-columns: repeat(7, minmax(82px, 1fr));
+    }
+}
 </style>
 
 <div class="hero-panel compact-hero" id="dashboardHero">
@@ -431,22 +582,23 @@ render_header('Bảng điều khiển', 'dashboard');
             <a class="btn secondary" href="<?= e(url('statistics.php')) ?>">Xem báo cáo</a>
         </div>
 
-        <div class="revenue-chart clean-bar-chart">
+        <div class="simple-column-chart">
             <?php foreach ($chartData as $item): ?>
                 <?php
                     $revenue = (float) $item['revenue'];
-                    $height = $revenue > 0
-                        ? max(12, (int) round(($revenue / $maxChartRevenue) * 100))
-                        : 6;
+                    $barHeight = $revenue > 0
+                        ? max(16, (int) round(($revenue / $maxChartRevenue) * 100))
+                        : 4;
                 ?>
-                <div class="clean-chart-item <?= $revenue > 0 ? 'has-value' : 'is-zero' ?>">
-                    <div class="clean-chart-value"><?= money($revenue) ?></div>
 
-                    <div class="clean-chart-track">
-                        <div class="clean-chart-bar" style="--bar-height: <?= $height ?>%"></div>
+                <div class="simple-column <?= $revenue > 0 ? 'has-value' : 'is-zero' ?>" title="<?= e($item['label'] . ' - ' . money($revenue)) ?>">
+                    <div class="simple-column-value"><?= money($revenue) ?></div>
+
+                    <div class="simple-column-track">
+                        <div class="simple-column-bar" style="height: <?= $barHeight ?>%;"></div>
                     </div>
 
-                    <div class="clean-chart-label"><?= e($item['label']) ?></div>
+                    <div class="simple-column-label"><?= e($item['label']) ?></div>
                 </div>
             <?php endforeach; ?>
         </div>

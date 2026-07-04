@@ -62,8 +62,10 @@ $where = ['1=1'];
 $params = [];
 
 if ($q !== '') {
-    $where[] = '(code LIKE :q OR name LIKE :q OR category LIKE :q)';
-    $params[':q'] = '%' . $q . '%';
+    $where[] = '(code LIKE :q_code OR name LIKE :q_name OR category LIKE :q_category)';
+    $params[':q_code'] = '%' . $q . '%';
+    $params[':q_name'] = '%' . $q . '%';
+    $params[':q_category'] = '%' . $q . '%';
 }
 
 if ($category !== '') {

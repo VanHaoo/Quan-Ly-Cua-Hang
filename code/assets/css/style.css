@@ -2915,76 +2915,10 @@ input.invalid {
 @media (max-width: 760px) {
     .import-item-row, .stock-import-filter-form { grid-template-columns: 1fr !important; }
 }
-/* ===== SUPPLIER HIDE BUTTON ===== */
 
-.supplier-select-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
-}
-
-.supplier-hide-trigger {
-    height: 42px;
-    padding-inline: 14px;
-    white-space: nowrap;
-}
-
-.supplier-hide-trigger:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-
-#new-supplier-field[hidden] {
-    display: none !important;
-}
-
-@media (max-width: 700px) {
-    .supplier-select-row {
-        grid-template-columns: 1fr;
-    }
-
-    .supplier-hide-trigger {
-        width: 100%;
-    }
-}
-/* ===== SUPPLIER HIDE BUTTON ===== */
-
-.supplier-select-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
-}
-
-.supplier-hide-trigger {
-    height: 42px;
-    padding-inline: 14px;
-    white-space: nowrap;
-}
-
-.supplier-hide-trigger:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-
-#new-supplier-field[hidden] {
-    display: none !important;
-}
-
-@media (max-width: 700px) {
-    .supplier-select-row {
-        grid-template-columns: 1fr;
-    }
-
-    .supplier-hide-trigger {
-        width: 100%;
-    }
-}
 /* ===== STOCK IMPORT SUPPLIER FINAL FIX ===== */
 
+/* Khối chọn nhà cung cấp: tách label và button, tránh lỗi button bị nuốt trong label */
 .supplier-field {
     display: grid !important;
     gap: 7px !important;
@@ -3033,6 +2967,7 @@ input.invalid {
     display: none !important;
 }
 
+/* Giữ layout nhập hàng không đè nhau */
 .stock-import-layout {
     display: grid !important;
     grid-template-columns: minmax(390px, 460px) minmax(0, 1fr) !important;
@@ -3108,5 +3043,78 @@ input.invalid {
 
     .supplier-hide-trigger {
         width: 100% !important;
+    }
+}
+/* ==== PRODUCTS FILTER NẰM NGANG ==== */
+.products-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.products-topbar .products-heading {
+    flex: 1 1 320px;
+}
+
+.products-topbar .product-filter-form {
+    flex: 1 1 420px;
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 0;
+}
+
+.products-topbar .product-filter-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+}
+
+.products-topbar .product-filter-form label:first-child {
+    flex: 1 1 240px;
+}
+
+.products-topbar .product-filter-form label:nth-child(2) {
+    flex: 0 0 180px;
+}
+
+.products-topbar .product-filter-form input,
+.products-topbar .product-filter-form select {
+    width: 100%;
+    min-width: 0;
+}
+
+.products-topbar .product-filter-form .btn,
+.products-topbar .product-filter-form button {
+    height: 44px;
+    white-space: nowrap;
+    padding: 0 18px;
+    align-self: flex-end;
+}
+
+/* mobile thì tự xuống hàng */
+@media (max-width: 768px) {
+    .products-topbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .products-topbar .product-filter-form {
+        width: 100%;
+    }
+
+    .products-topbar .product-filter-form label,
+    .products-topbar .product-filter-form label:first-child,
+    .products-topbar .product-filter-form label:nth-child(2) {
+        flex: 1 1 100%;
+    }
+
+    .products-topbar .product-filter-form .btn,
+    .products-topbar .product-filter-form button {
+        width: 100%;
     }
 }
