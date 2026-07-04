@@ -190,15 +190,13 @@ render_header('Kiểm tra tồn kho', 'inventory');
     </div>
 
     <div class="table-wrap">
-        <table class="inventory-table">
+        <table class="inventory-table inventory-table-clean">
             <thead>
                 <tr>
                     <th>Mã</th>
                     <th>Sản phẩm</th>
-                    <th class="right">Tồn đang ghi nhận</th>
-                    <th class="right">Mức cảnh báo</th>
                     <th class="right">Tồn hiện tại</th>
-                    <th class="right">Mức cảnh báo mới</th>
+                    <th class="right">Mức cảnh báo</th>
                     <th class="right">Thao tác</th>
                 </tr>
             </thead>
@@ -206,7 +204,7 @@ render_header('Kiểm tra tồn kho', 'inventory');
             <tbody>
                 <?php if (!$products): ?>
                     <tr>
-                        <td colspan="7" class="empty">Không có sản phẩm phù hợp.</td>
+                        <td colspan="5" class="empty">Không có sản phẩm phù hợp.</td>
                     </tr>
                 <?php endif; ?>
 
@@ -214,29 +212,63 @@ render_header('Kiểm tra tồn kho', 'inventory');
                     <?php
                         $stock = (int) $product['stock'];
                         $minStock = (int) $product['min_stock'];
+                        $isOut = $stock === 0;
                         $isLow = $stock <= $minStock;
                     ?>
+
                     <tr>
                         <td><strong><?= e($product['code']) ?></strong></td>
+
                         <td>
-                            <?= e($product['name']) ?>
-                            <small class="block muted"><?= e($product['category']) ?> · <?= e($product['unit']) ?></small>
+                            <div class="inventory-product-cell">
+                                <strong><?= e($product['name']) ?></strong>
+
+                                <small class="block muted">
+                                    <?= e($product['category']) ?> · <?= e($product['unit']) ?>
+                                </small>
+
+                                <small class="block inventory-current-note">
+                                    Đang lưu: tồn <?= $stock ?> · cảnh báo <?= $minStock ?>
+                                </small>
+
+                                <?php if ($isOut): ?>
+                                    <span class="stock-status-badge out">Hết hàng</span>
+                                <?php elseif ($isLow): ?>
+                                    <span class="stock-status-badge low">Sắp hết</span>
+                                <?php else: ?>
+                                    <span class="stock-status-badge ok">Ổn định</span>
+                                <?php endif; ?>
+                            </div>
                         </td>
-                        <td class="right">
-                            <span class="stock <?= $isLow ? 'low' : '' ?>"><?= $stock ?></span>
-                        </td>
-                        <td class="right"><?= $minStock ?></td>
+
                         <td class="right">
                             <form method="post" class="inventory-inline-update">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="id" value="<?= (int) $product['id'] ?>">
+
                                 <label class="sr-only" for="stock-<?= (int) $product['id'] ?>">Tồn hiện tại</label>
-                                <input id="stock-<?= (int) $product['id'] ?>" type="number" name="stock" min="0" value="<?= $stock ?>">
+                                <input
+                                    id="stock-<?= (int) $product['id'] ?>"
+                                    type="number"
+                                    name="stock"
+                                    min="0"
+                                    value="<?= $stock ?>"
+                                    aria-label="Tồn hiện tại"
+                                >
                         </td>
+
                         <td class="right">
                                 <label class="sr-only" for="min-stock-<?= (int) $product['id'] ?>">Mức cảnh báo</label>
-                                <input id="min-stock-<?= (int) $product['id'] ?>" type="number" name="min_stock" min="0" value="<?= $minStock ?>">
+                                <input
+                                    id="min-stock-<?= (int) $product['id'] ?>"
+                                    type="number"
+                                    name="min_stock"
+                                    min="0"
+                                    value="<?= $minStock ?>"
+                                    aria-label="Mức cảnh báo"
+                                >
                         </td>
+
                         <td class="right">
                                 <button class="btn small primary">Lưu</button>
                             </form>

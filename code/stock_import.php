@@ -340,7 +340,7 @@ render_header('Nhập hàng', 'stock_import');
 
                         <label>
                             Giá nhập
-                            <input class="import-price" type="number" name="cost_price[]" min="1" step="1000" required>
+                            <input class="import-price" type="number" name="cost_price[]" min="1" step="1" required>
                             <small class="field-error"></small>
                         </label>
 

@@ -48,16 +48,7 @@ function url(string $path = ''): string
 {
     $base = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
     $base = $base === '/' ? '' : rtrim($base, '/');
-
     return $base . ($path !== '' ? '/' . ltrim($path, '/') : '');
-}
-
-function asset(string $path): string
-{
-    $file = __DIR__ . '/../' . ltrim($path, '/');
-    $version = file_exists($file) ? filemtime($file) : time();
-
-    return url($path) . '?v=' . $version;
 }
 
 function redirect(string $path): never
@@ -89,7 +80,6 @@ function is_logged_in(): bool
 function has_role(string ...$roles): bool
 {
     $role = current_user()['role'] ?? '';
-
     return in_array($role, $roles, true);
 }
 
@@ -98,35 +88,9 @@ function is_admin(): bool
     return has_role('admin');
 }
 
-function user_role(): string
-{
-    return (string) (current_user()['role'] ?? '');
-}
-
-function is_cashier(): bool
-{
-    return has_role('cashier');
-}
-
-function is_warehouse(): bool
-{
-    return has_role('warehouse');
-}
-
-function role_label(): string
-{
-    return match (user_role()) {
-        'admin' => 'Quản lý',
-        'warehouse' => 'Nhân viên kho',
-        'cashier' => 'Thu ngân',
-        default => 'Người dùng',
-    };
-}
-
 function role_name(?string $role = null): string
 {
     $role ??= current_user()['role'] ?? '';
-
     return match ($role) {
         'admin' => 'Quản lý',
         'cashier' => 'Thu ngân',
@@ -151,7 +115,6 @@ function require_admin(): void
 function require_roles(string ...$roles): void
 {
     require_login();
-
     if (!has_role(...$roles)) {
         flash('error', 'Bạn không có quyền sử dụng chức năng này.');
         redirect('dashboard.php');
@@ -163,14 +126,12 @@ function csrf_token(): string
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
-
     return (string) $_SESSION['csrf_token'];
 }
 
 function verify_csrf_value(?string $token): void
 {
     $sessionToken = (string) ($_SESSION['csrf_token'] ?? '');
-
     if ($token === null || $token === '' || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
         http_response_code(419);
         exit('Phiên làm việc không hợp lệ. Hãy tải lại trang và thử lại.');
@@ -194,10 +155,8 @@ function flash(string $key, ?string $message = null): ?string
         $_SESSION['flash'][$key] = $message;
         return null;
     }
-
     $value = $_SESSION['flash'][$key] ?? null;
     unset($_SESSION['flash'][$key]);
-
     return is_string($value) ? $value : null;
 }
 
@@ -221,9 +180,6 @@ function render_header(string $title, string $active = ''): void
     $user = current_user();
     $success = flash('success');
     $error = flash('error');
-
-    $role = user_role();
-    $roleLabel = role_name($role);
     ?>
     <!doctype html>
     <html lang="vi">
@@ -231,103 +187,64 @@ function render_header(string $title, string $active = ''): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= e($title) ?> | Quản lý bán hàng</title>
-        <link rel="stylesheet" href="<?= e(asset('assets/css/style.css')) ?>">
+        <link rel="stylesheet" href="<?= e(url('assets/css/style.css?v=5')) ?>">
     </head>
-
     <body>
     <div class="app-shell">
-
         <aside class="sidebar">
             <a class="brand" href="<?= e(url('dashboard.php')) ?>">
                 <span class="brand-icon">🛒</span>
-                <span>
-                    <strong>POS Mini</strong>
-                    <small>Hệ thống bán hàng tại quầy</small>
-                </span>
+                <span><strong>POS Mini</strong><small>Hệ thống bán hàng tại quầy</small></span>
             </a>
-
-            <nav class="side-menu">
-                <div class="menu-group">
-                    <span class="menu-title">Tổng quan</span>
-                    <a class="<?= $active === 'dashboard' ? 'active' : '' ?>" href="<?= e(url('dashboard.php')) ?>">
-                        <span>▦</span> Bảng điều khiển
-                    </a>
+            <nav class="side-nav">
+                <div class="nav-group">
+                    <small>Tổng quan</small>
+                    <a class="<?= active_class($active, 'dashboard') ?>" href="<?= e(url('dashboard.php')) ?>">▦ Bảng điều khiển</a>
                 </div>
 
-                <div class="menu-group">
-                    <span class="menu-title">Bán hàng tại quầy</span>
+                <?php if (has_role('admin', 'cashier')): ?>
+                    <div class="nav-group">
+                        <small>Bán hàng tại quầy</small>
+                        <a class="<?= active_class($active, 'sales') ?>" href="<?= e(url('sales.php')) ?>">🛍 Bán hàng</a>
+                        <a class="<?= active_class($active, 'invoices') ?>" href="<?= e(url('invoices.php')) ?>">▤ Hóa đơn</a>
+                        <a class="<?= active_class($active, 'customers') ?>" href="<?= e(url('customers.php')) ?>">♡ Khách hàng - tích điểm</a>
+                    </div>
+                <?php endif; ?>
 
-                    <?php if (!is_warehouse()): ?>
-                        <a class="<?= $active === 'sales' ? 'active' : '' ?>" href="<?= e(url('sales.php')) ?>">
-                            <span>🛒</span> Bán hàng
-                        </a>
-
-                        <a class="<?= $active === 'invoices' ? 'active' : '' ?>" href="<?= e(url('invoices.php')) ?>">
-                            <span>▤</span> Hóa đơn
-                        </a>
-
-                        <a class="<?= $active === 'customers' ? 'active' : '' ?>" href="<?= e(url('customers.php')) ?>">
-                            <span>♡</span> Khách hàng - tích điểm
-                        </a>
-                    <?php endif; ?>
-                </div>
-
-                <div class="menu-group">
-                    <span class="menu-title">Quản lý kho</span>
-
-                    <a class="<?= $active === 'inventory' ? 'active' : '' ?>" href="<?= e(url('inventory.php')) ?>">
-                        <span>▣</span> Kiểm tra tồn kho
-                    </a>
-
-                    <?php if (is_admin() || is_warehouse()): ?>
-                        <a class="<?= $active === 'stock_import' ? 'active' : '' ?>" href="<?= e(url('stock_import.php')) ?>">
-                            <span>▾</span> Nhập hàng
-                        </a>
-                    <?php endif; ?>
-                </div>
+                <?php if (has_role('admin', 'warehouse')): ?>
+                    <div class="nav-group">
+                        <small>Quản lý kho</small>
+                        <a class="<?= active_class($active, 'inventory') ?>" href="<?= e(url('inventory.php')) ?>">▣ Kiểm tra tồn kho</a>
+                        <a class="<?= active_class($active, 'stock_import') ?>" href="<?= e(url('stock_import.php')) ?>">↧ Nhập hàng</a>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (is_admin()): ?>
-                    <div class="menu-group">
-                        <span class="menu-title">Quản trị hệ thống</span>
-
-                        <a class="<?= $active === 'products' ? 'active' : '' ?>" href="<?= e(url('products.php')) ?>">
-                            <span>▣</span> Quản lý sản phẩm
-                        </a>
-
-                        <a class="<?= $active === 'employees' ? 'active' : '' ?>" href="<?= e(url('employees.php')) ?>">
-                            <span>●</span> Nhân viên & phân quyền
-                        </a>
-
-                        <a class="<?= $active === 'statistics' ? 'active' : '' ?>" href="<?= e(url('statistics.php')) ?>">
-                            <span>▥</span> Báo cáo doanh thu
-                        </a>
+                    <div class="nav-group">
+                        <small>Quản trị hệ thống</small>
+                        <a class="<?= active_class($active, 'products') ?>" href="<?= e(url('products.php')) ?>">▥ Quản lý sản phẩm</a>
+                        <a class="<?= active_class($active, 'employees') ?>" href="<?= e(url('employees.php')) ?>">♙ Nhân viên & phân quyền</a>
+                        <a class="<?= active_class($active, 'statistics') ?>" href="<?= e(url('statistics.php')) ?>">◫ Báo cáo doanh thu</a>
                     </div>
                 <?php endif; ?>
             </nav>
-
             <div class="sidebar-user">
                 <strong><?= e($user['full_name'] ?? '') ?></strong>
-                <small><?= e($roleLabel) ?></small>
+                <small><?= e(role_name($user['role'] ?? null)) ?></small>
                 <a href="<?= e(url('index.php?action=logout')) ?>">Đăng xuất</a>
+                <span class="sidebar-mini-status">☁️ Giao diện sáng</span>
             </div>
         </aside>
-
         <main class="main-content">
             <header class="topbar">
                 <div>
                     <h1><?= e($title) ?></h1>
                     <p>Phân tích - thiết kế theo quy trình bán hàng tại quầy</p>
                 </div>
-                <span class="role-badge"><?= e($roleLabel) ?></span>
+                <span class="role-badge"><?= e(role_name()) ?></span>
             </header>
-
-            <?php if ($success): ?>
-                <div class="alert success"><?= e($success) ?></div>
-            <?php endif; ?>
-
-            <?php if ($error): ?>
-                <div class="alert error"><?= e($error) ?></div>
-            <?php endif; ?>
+            <?php if ($success): ?><div class="alert success"><?= e($success) ?></div><?php endif; ?>
+            <?php if ($error): ?><div class="alert error"><?= e($error) ?></div><?php endif; ?>
     <?php
 }
 
@@ -336,7 +253,15 @@ function render_footer(): void
     ?>
         </main>
     </div>
-    <script src="<?= e(asset('assets/js/app.js')) ?>"></script>
+    <script>
+        document.querySelectorAll('[data-confirm]').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                if (!confirm(button.dataset.confirm || 'Bạn có chắc chắn không?')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
     </body>
     </html>
     <?php
