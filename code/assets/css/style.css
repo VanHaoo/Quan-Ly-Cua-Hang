@@ -2949,3 +2949,37 @@ input.invalid {
         width: 100%;
     }
 }
+/* ===== SUPPLIER HIDE BUTTON ===== */
+
+.supplier-select-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.supplier-hide-trigger {
+    height: 42px;
+    padding-inline: 14px;
+    white-space: nowrap;
+}
+
+.supplier-hide-trigger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+#new-supplier-field[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 700px) {
+    .supplier-select-row {
+        grid-template-columns: 1fr;
+    }
+
+    .supplier-hide-trigger {
+        width: 100%;
+    }
+}

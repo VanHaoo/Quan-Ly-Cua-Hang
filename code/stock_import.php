@@ -292,12 +292,14 @@ if ($hasCreatedAt) {
 
     $topSupplier = $pdo
         ->query("
-            SELECT supplier
-            FROM stock_imports
-            WHERE YEAR(created_at)=YEAR(CURDATE())
-            AND MONTH(created_at)=MONTH(CURDATE())
-            GROUP BY supplier
-            ORDER BY COUNT(*) DESC, SUM(total_amount) DESC
+            SELECT si.supplier
+            FROM stock_imports si
+            LEFT JOIN hidden_suppliers hs ON hs.supplier = si.supplier
+            WHERE YEAR(si.created_at)=YEAR(CURDATE())
+            AND MONTH(si.created_at)=MONTH(CURDATE())
+            AND hs.id IS NULL
+            GROUP BY si.supplier
+            ORDER BY COUNT(*) DESC, SUM(si.total_amount) DESC
             LIMIT 1
         ")
         ->fetchColumn();
