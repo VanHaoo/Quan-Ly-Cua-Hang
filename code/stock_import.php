@@ -6,6 +6,10 @@ require_roles('admin', 'warehouse');
 
 $pdo = db();
 
+/*
+ * Bảng này dùng để ẩn nhà cung cấp khỏi dropdown chọn nhà cung cấp.
+ * Không xóa phiếu nhập cũ để tránh sai lịch sử kho.
+ */
 $pdo->exec("
     CREATE TABLE IF NOT EXISTS hidden_suppliers (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -56,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Đã xóa nhà cung cấp "' . $supplierToHide . '" khỏi danh sách chọn.');
 
             redirect('stock_import.php');
+            exit;
         }
 
         if ($action !== 'create_import') {
@@ -162,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     redirect('stock_import.php');
+    exit;
 }
 
 $detailId = (int) ($_GET['id'] ?? 0);
@@ -174,6 +180,7 @@ if ($detailId > 0) {
     if (!$import) {
         flash('error', 'Không tìm thấy phiếu nhập.');
         redirect('stock_import.php');
+        exit;
     }
 
     $detailStmt = $pdo->prepare('SELECT * FROM stock_import_details WHERE stock_import_id=? ORDER BY id');
@@ -212,6 +219,12 @@ if ($detailId > 0) {
                 </thead>
 
                 <tbody>
+                    <?php if (!$details): ?>
+                        <tr>
+                            <td colspan="4" class="empty">Phiếu nhập này chưa có chi tiết sản phẩm.</td>
+                        </tr>
+                    <?php endif; ?>
+
                     <?php foreach ($details as $detail): ?>
                         <tr>
                             <td>
@@ -349,8 +362,9 @@ render_header('Nhập hàng', 'stock_import');
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="create_import">
 
-            <label>
-                Nhà cung cấp
+            <div class="supplier-field">
+                <label class="supplier-label" for="supplier-select">Nhà cung cấp</label>
+
                 <div class="supplier-select-row">
                     <select name="supplier" id="supplier-select" required>
                         <option value="">-- Chọn nhà cung cấp --</option>
@@ -367,13 +381,14 @@ render_header('Nhập hàng', 'stock_import');
                         class="btn danger supplier-hide-trigger"
                         id="hide-supplier-btn"
                         title="Xóa nhà cung cấp khỏi danh sách"
+                        disabled
                     >
-                        Xóa
+                        Xóa NCC
                     </button>
                 </div>
 
-                <small class="muted">Xóa chỉ ẩn khỏi danh sách chọn, không xóa phiếu nhập cũ.</small>
-            </label>
+                <small class="muted">Xóa NCC chỉ ẩn khỏi danh sách chọn, không xóa phiếu nhập cũ.</small>
+            </div>
 
             <label id="new-supplier-field" hidden>
                 Nhà cung cấp mới
@@ -540,17 +555,27 @@ render_header('Nhập hàng', 'stock_import');
     const formatMoney = value => new Intl.NumberFormat('vi-VN').format(Math.max(0, Math.round(value))) + ' đ';
 
     function toggleSupplierInput() {
+        if (!supplierSelect) return;
+
         const isNew = supplierSelect.value === '__new';
         const canHide = supplierSelect.value !== '' && supplierSelect.value !== '__new';
 
-        newSupplierField.hidden = !isNew;
-        newSupplierInput.required = isNew;
-        hideSupplierButton.disabled = !canHide;
+        if (newSupplierField) {
+            newSupplierField.hidden = !isNew;
+        }
 
-        if (isNew) {
-            newSupplierInput.focus();
-        } else {
-            newSupplierInput.value = '';
+        if (newSupplierInput) {
+            newSupplierInput.required = isNew;
+
+            if (isNew) {
+                newSupplierInput.focus();
+            } else {
+                newSupplierInput.value = '';
+            }
+        }
+
+        if (hideSupplierButton) {
+            hideSupplierButton.disabled = !canHide;
         }
     }
 
