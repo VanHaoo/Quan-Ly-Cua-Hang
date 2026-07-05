@@ -16,6 +16,37 @@ function employee_role_label(string $role): string
     };
 }
 
+function employee_role_icon(string $role): string
+{
+    return match ($role) {
+        'admin' => '👑',
+        'cashier' => '🧾',
+        'warehouse' => '📦',
+        default => '👤',
+    };
+}
+
+function employee_role_class(string $role): string
+{
+    return in_array($role, ['admin', 'cashier', 'warehouse'], true) ? $role : 'user';
+}
+
+function employee_role_note(string $role): string
+{
+    return match ($role) {
+        'admin' => 'Toàn quyền quản trị hệ thống',
+        'cashier' => 'Xử lý bán hàng tại quầy',
+        'warehouse' => 'Theo dõi tồn kho và nhập hàng',
+        default => 'Tài khoản hệ thống',
+    };
+}
+
+function employee_page_url(array $baseParams, int $page): string
+{
+    $baseParams['page'] = $page;
+    return 'employees.php?' . http_build_query($baseParams);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
@@ -53,10 +84,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Nhân viên mới cần nhập mật khẩu.');
                 }
 
-                if (strlen($password) < 6) {
-                    throw new RuntimeException('Mật khẩu phải có ít nhất 6 ký tự.');
-                }
-
                 $stmt = $pdo->prepare('INSERT INTO users(username,password,full_name,role,status) VALUES(?,?,?,?,1)');
                 $stmt->execute([$username, password_hash($password, PASSWORD_DEFAULT), $fullName, $role]);
 
@@ -82,7 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $newStatus = (int) $user['status'] === 1 ? 0 : 1;
 
-            $pdo->prepare('UPDATE users SET status=? WHERE id=?')->execute([$newStatus, $id]);
+            $pdo->prepare('UPDATE users SET status=? WHERE id=?')
+                ->execute([$newStatus, $id]);
 
             log_activity('user_status', ($newStatus ? 'Kích hoạt' : 'Khóa') . ' tài khoản ' . $user['full_name']);
             flash('success', 'Đã cập nhật trạng thái tài khoản.');
@@ -102,11 +130,19 @@ if (isset($_GET['edit'])) {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE id=?');
     $stmt->execute([(int) $_GET['edit']]);
     $edit = $stmt->fetch() ?: null;
+
+    if (!$edit) {
+        flash('error', 'Không tìm thấy nhân viên cần sửa.');
+        redirect('employees.php');
+    }
 }
 
 $q = trim((string) ($_GET['q'] ?? ''));
 $roleFilter = (string) ($_GET['role'] ?? 'all');
 $statusFilter = (string) ($_GET['status'] ?? 'all');
+$page = max(1, (int) ($_GET['page'] ?? 1));
+$perPage = 10;
+$offset = ($page - 1) * $perPage;
 
 $where = ['1=1'];
 $params = [];
@@ -131,81 +167,200 @@ if ($statusFilter === 'active') {
     $statusFilter = 'all';
 }
 
-$sql = 'SELECT * FROM users WHERE ' . implode(' AND ', $where) . ' ORDER BY role, id DESC';
+$whereSql = implode(' AND ', $where);
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE {$whereSql}");
+
+foreach ($params as $key => $value) {
+    $countStmt->bindValue($key, $value, PDO::PARAM_STR);
+}
+
+$countStmt->execute();
+
+$totalUsers = (int) $countStmt->fetchColumn();
+$totalPages = max(1, (int) ceil($totalUsers / $perPage));
+
+if ($page > $totalPages) {
+    $page = $totalPages;
+    $offset = ($page - 1) * $perPage;
+}
+
+$sql = "SELECT * FROM users WHERE {$whereSql} ORDER BY FIELD(role,'admin','cashier','warehouse'), id DESC LIMIT :limit OFFSET :offset";
 $stmt = $pdo->prepare($sql);
 
 foreach ($params as $key => $value) {
     $stmt->bindValue($key, $value, PDO::PARAM_STR);
 }
 
+$stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 $stmt->execute();
+
 $users = $stmt->fetchAll();
+
+$roleCounts = [
+    'admin' => 0,
+    'cashier' => 0,
+    'warehouse' => 0,
+];
+
+foreach ($pdo->query('SELECT role, COUNT(*) AS total FROM users GROUP BY role')->fetchAll() as $row) {
+    if (isset($roleCounts[$row['role']])) {
+        $roleCounts[$row['role']] = (int) $row['total'];
+    }
+}
 
 $summary = [
     'total' => (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn(),
     'active' => (int) $pdo->query('SELECT COUNT(*) FROM users WHERE status=1')->fetchColumn(),
     'locked' => (int) $pdo->query('SELECT COUNT(*) FROM users WHERE status=0')->fetchColumn(),
+    'roles' => count(array_filter($roleCounts, fn($count) => $count > 0)),
 ];
+
+$permissionCards = [
+    [
+        'role' => 'admin',
+        'title' => 'Quản lý',
+        'icon' => '👑',
+        'note' => 'Toàn quyền quản trị, cấu hình và xem báo cáo.',
+        'items' => ['Bảng điều khiển', 'Bán hàng & hóa đơn', 'Kho & nhập hàng', 'Sản phẩm', 'Nhân viên', 'Báo cáo doanh thu'],
+    ],
+    [
+        'role' => 'cashier',
+        'title' => 'Thu ngân',
+        'icon' => '🧾',
+        'note' => 'Tập trung vào thao tác bán hàng và chăm sóc khách hàng.',
+        'items' => ['Bảng điều khiển', 'Bán hàng tại quầy', 'Hóa đơn', 'Khách hàng - tích điểm'],
+    ],
+    [
+        'role' => 'warehouse',
+        'title' => 'Nhân viên kho',
+        'icon' => '📦',
+        'note' => 'Theo dõi tồn kho và lập phiếu nhập hàng.',
+        'items' => ['Bảng điều khiển', 'Kiểm tra tồn kho', 'Nhập hàng'],
+    ],
+];
+
+$paginationParams = array_filter([
+    'q' => $q,
+    'role' => $roleFilter !== 'all' ? $roleFilter : '',
+    'status' => $statusFilter !== 'all' ? $statusFilter : '',
+], fn($value) => $value !== '');
 
 render_header('Nhân viên & phân quyền', 'employees');
 ?>
 
-<div class="stats-grid employee-summary-grid">
-    <article class="stat-card">
-        <span>Tổng nhân viên</span>
-        <strong><?= $summary['total'] ?></strong>
-        <small>Toàn bộ tài khoản hệ thống</small>
-    </article>
+<div class="employee-manager-page">
+    <section class="panel employee-hero-panel">
+        <div>
+            <span class="eyebrow">QUẢN TRỊ HỆ THỐNG</span>
+            <h2>Quản lý nhân viên và phân quyền theo vai trò.</h2>
+            <p>Tạo tài khoản đăng nhập, đổi vai trò, khóa/mở tài khoản và xem nhanh quyền truy cập của từng nhóm nhân viên.</p>
+        </div>
 
-    <article class="stat-card">
-        <span>Đang hoạt động</span>
-        <strong><?= $summary['active'] ?></strong>
-        <small>Có thể đăng nhập và thao tác</small>
-    </article>
+        <a class="btn primary" href="#employee-form-card">
+            <?= $edit ? 'Đang sửa nhân viên' : '+ Thêm nhân viên' ?>
+        </a>
+    </section>
 
-    <article class="stat-card warning">
-        <span>Đã khóa tài khoản</span>
-        <strong><?= $summary['locked'] ?></strong>
-        <small>Không thể đăng nhập hệ thống</small>
-    </article>
-</div>
+    <div class="stats-grid employee-summary-grid modern-employee-summary">
+        <article class="mini-stat">
+            <span>Tổng nhân viên</span>
+            <strong><?= (int) $summary['total'] ?></strong>
+            <small>Toàn bộ tài khoản hệ thống</small>
+        </article>
 
-<div class="two-column employee-page-layout">
-    <section class="panel form-panel">
-        <div class="panel-heading">
+        <article class="mini-stat">
+            <span>Đang hoạt động</span>
+            <strong><?= (int) $summary['active'] ?></strong>
+            <small>Có thể đăng nhập và thao tác</small>
+        </article>
+
+        <article class="mini-stat warning">
+            <span>Đã khóa</span>
+            <strong><?= (int) $summary['locked'] ?></strong>
+            <small>Không thể đăng nhập hệ thống</small>
+        </article>
+
+        <article class="mini-stat">
+            <span>Nhóm quyền</span>
+            <strong><?= (int) $summary['roles'] ?>/3</strong>
+            <small>Quản lý, thu ngân, kho</small>
+        </article>
+    </div>
+
+    <section class="panel role-permission-panel">
+        <div class="panel-heading relaxed-heading">
             <div>
-                <h2><?= $edit ? 'Cập nhật nhân viên' : 'Thêm nhân viên' ?></h2>
-                <p>Phân quyền theo vai trò trong sơ đồ Use Case</p>
+                <h2>Phân quyền theo vai trò</h2>
+                <p>Quyền được áp dụng theo menu chức năng trong hệ thống POS Mini.</p>
             </div>
         </div>
 
-        <form method="post" class="form-grid one-column employee-form" id="employee-form">
+        <div class="permission-card-grid">
+            <?php foreach ($permissionCards as $card): ?>
+                <article class="permission-card <?= e($card['role']) ?>">
+                    <div class="permission-card-head">
+                        <span><?= e($card['icon']) ?></span>
+                        <div>
+                            <strong><?= e($card['title']) ?></strong>
+                            <small><?= e($card['note']) ?></small>
+                        </div>
+                    </div>
+
+                    <div class="permission-list">
+                        <?php foreach ($card['items'] as $item): ?>
+                            <span>✓ <?= e($item) ?></span>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="permission-count">
+                        <?= (int) $roleCounts[$card['role']] ?> tài khoản
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    </section>
+
+    <section class="panel employee-form-card" id="employee-form-card">
+        <div class="panel-heading employee-form-heading">
+            <div>
+                <h2><?= $edit ? 'Cập nhật nhân viên' : 'Thêm nhân viên mới' ?></h2>
+                <p><?= $edit ? 'Bạn đang chỉnh sửa tài khoản ' . e((string) $edit['username']) : 'Nhập thông tin đăng nhập và chọn vai trò phù hợp.' ?></p>
+            </div>
+
+            <?php if ($edit): ?>
+                <a class="btn ghost" href="<?= e(url('employees.php')) ?>">Hủy sửa</a>
+            <?php endif; ?>
+        </div>
+
+        <form method="post" class="employee-form-grid" id="employee-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= (int) ($edit['id'] ?? 0) ?>">
 
             <label>
                 Tên đăng nhập
-                <input name="username" value="<?= e($edit['username'] ?? '') ?>" required>
+                <input name="username" value="<?= e($edit['username'] ?? '') ?>" placeholder="VD: thungan01" required>
             </label>
 
             <label>
                 Họ tên
-                <input name="full_name" value="<?= e($edit['full_name'] ?? '') ?>" required>
+                <input name="full_name" value="<?= e($edit['full_name'] ?? '') ?>" placeholder="VD: Nguyễn Văn A" required>
             </label>
 
             <label>
                 Vai trò
                 <select name="role">
                     <option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Quản lý</option>
-                    <option value="cashier" <?= ($edit['role'] ?? '') === 'cashier' ? 'selected' : '' ?>>Thu ngân</option>
+                    <option value="cashier" <?= ($edit['role'] ?? 'cashier') === 'cashier' ? 'selected' : '' ?>>Thu ngân</option>
                     <option value="warehouse" <?= ($edit['role'] ?? '') === 'warehouse' ? 'selected' : '' ?>>Nhân viên kho</option>
                 </select>
             </label>
 
             <label>
                 Mật khẩu
-                <div class="password-field">
+                <span class="employee-password-box">
                     <input
                         id="employee-password"
                         type="password"
@@ -214,64 +369,70 @@ render_header('Nhân viên & phân quyền', 'employees');
                         placeholder="<?= $edit ? 'Để trống nếu không đổi' : 'Tối thiểu 6 ký tự' ?>"
                         <?= $edit ? '' : 'required' ?>
                     >
-                    <button type="button" class="password-toggle" id="toggle-password" aria-label="Hiện hoặc ẩn mật khẩu">👁️</button>
-                </div>
+                    <button type="button" class="employee-password-toggle" id="toggle-password" aria-label="Hiện hoặc ẩn mật khẩu">👁️</button>
+                </span>
                 <small class="field-error" id="password-error"></small>
             </label>
 
-            <button class="btn primary"><?= $edit ? 'Lưu thay đổi' : 'Thêm nhân viên' ?></button>
+            <div class="employee-form-actions">
+                <button class="btn primary"><?= $edit ? 'Lưu thay đổi' : 'Thêm nhân viên' ?></button>
 
-            <?php if ($edit): ?>
-                <a class="btn ghost" href="employees.php">Hủy sửa</a>
-            <?php endif; ?>
+                <?php if (!$edit): ?>
+                    <button class="btn ghost" type="reset">Làm mới</button>
+                <?php endif; ?>
+            </div>
         </form>
     </section>
 
-    <section class="panel employee-list-panel">
-        <div class="panel-heading responsive">
+    <section class="panel employee-list-card">
+        <div class="panel-heading employee-list-heading">
             <div>
                 <h2>Danh sách tài khoản</h2>
-                <p><?= count($users) ?> nhân viên phù hợp</p>
+                <p><?= $totalUsers ?> nhân viên phù hợp với bộ lọc hiện tại</p>
             </div>
-
-            <form method="get" class="filter-form employee-filter-form">
-                <label>
-                    Tìm kiếm
-                    <input name="q" value="<?= e($q) ?>" placeholder="Tên đăng nhập hoặc họ tên">
-                </label>
-
-                <label>
-                    Vai trò
-                    <select name="role">
-                        <option value="all">Tất cả</option>
-                        <option value="admin" <?= $roleFilter === 'admin' ? 'selected' : '' ?>>Quản lý</option>
-                        <option value="cashier" <?= $roleFilter === 'cashier' ? 'selected' : '' ?>>Thu ngân</option>
-                        <option value="warehouse" <?= $roleFilter === 'warehouse' ? 'selected' : '' ?>>Nhân viên kho</option>
-                    </select>
-                </label>
-
-                <label>
-                    Trạng thái
-                    <select name="status">
-                        <option value="all">Tất cả</option>
-                        <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Đang hoạt động</option>
-                        <option value="locked" <?= $statusFilter === 'locked' ? 'selected' : '' ?>>Đã khóa</option>
-                    </select>
-                </label>
-
-                <button class="btn secondary">Lọc</button>
-            </form>
         </div>
 
-        <div class="table-wrap">
-            <table>
+        <form method="get" class="filter-form employee-filter-form modern-employee-filter">
+            <label>
+                Tìm kiếm
+                <input name="q" value="<?= e($q) ?>" placeholder="Tên đăng nhập hoặc họ tên">
+            </label>
+
+            <label>
+                Vai trò
+                <select name="role">
+                    <option value="all">Tất cả</option>
+                    <option value="admin" <?= $roleFilter === 'admin' ? 'selected' : '' ?>>Quản lý</option>
+                    <option value="cashier" <?= $roleFilter === 'cashier' ? 'selected' : '' ?>>Thu ngân</option>
+                    <option value="warehouse" <?= $roleFilter === 'warehouse' ? 'selected' : '' ?>>Nhân viên kho</option>
+                </select>
+            </label>
+
+            <label>
+                Trạng thái
+                <select name="status">
+                    <option value="all">Tất cả</option>
+                    <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Đang hoạt động</option>
+                    <option value="locked" <?= $statusFilter === 'locked' ? 'selected' : '' ?>>Đã khóa</option>
+                </select>
+            </label>
+
+            <button class="btn secondary">Lọc</button>
+
+            <?php if ($q !== '' || $roleFilter !== 'all' || $statusFilter !== 'all'): ?>
+                <a class="btn ghost" href="<?= e(url('employees.php')) ?>">Xóa lọc</a>
+            <?php endif; ?>
+        </form>
+
+        <div class="table-wrap employee-table-wrap">
+            <table class="employee-table-modern">
                 <thead>
                     <tr>
-                        <th>Tài khoản</th>
-                        <th>Họ tên</th>
+                        <th>Nhân viên</th>
+                        <th>Tên đăng nhập</th>
                         <th>Vai trò</th>
                         <th>Trạng thái</th>
-                        <th>Thao tác</th>
+                        <th class="right">Thao tác</th>
                     </tr>
                 </thead>
 
@@ -283,40 +444,100 @@ render_header('Nhân viên & phân quyền', 'employees');
                     <?php endif; ?>
 
                     <?php foreach ($users as $user): ?>
-                        <?php $isActive = (int) $user['status'] === 1; ?>
+                        <?php
+                            $isActive = (int) $user['status'] === 1;
+                            $role = (string) $user['role'];
+                            $isCurrentUser = (int) $user['id'] === (int) current_user()['id'];
+                        ?>
 
                         <tr>
-                            <td><strong><?= e($user['username']) ?></strong></td>
-                            <td><?= e($user['full_name']) ?></td>
-                            <td><?= e(employee_role_label((string) $user['role'])) ?></td>
+                            <td>
+                                <div class="employee-name-cell">
+                                    <span class="employee-avatar <?= e(employee_role_class($role)) ?>">
+                                        <?= e(employee_role_icon($role)) ?>
+                                    </span>
+
+                                    <div>
+                                        <strong><?= e($user['full_name']) ?></strong>
+                                        <small class="block muted"><?= e(employee_role_note($role)) ?></small>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td>
+                                <strong class="username-pill"><?= e($user['username']) ?></strong>
+                            </td>
+
+                            <td>
+                                <span class="role-chip <?= e(employee_role_class($role)) ?>">
+                                    <?= e(employee_role_label($role)) ?>
+                                </span>
+                            </td>
+
                             <td>
                                 <span class="status <?= $isActive ? 'paid' : 'cancelled' ?>">
                                     <?= $isActive ? 'Đang hoạt động' : 'Đã khóa' ?>
                                 </span>
-                            </td>
-                            <td class="actions employee-actions">
-                                <a class="btn small outline" href="?edit=<?= (int) $user['id'] ?>">Sửa</a>
 
-                                <?php if ((int) $user['id'] !== (int) current_user()['id']): ?>
-                                    <form method="post">
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                        <input type="hidden" name="action" value="toggle">
-                                        <input type="hidden" name="id" value="<?= (int) $user['id'] ?>">
-
-                                        <button
-                                            class="btn small <?= $isActive ? 'danger' : 'secondary' ?>"
-                                            data-confirm="<?= $isActive ? 'Bạn chắc chắn muốn khóa tài khoản này?' : 'Bạn muốn mở lại tài khoản này?' ?>"
-                                        >
-                                            <?= $isActive ? 'Khóa' : 'Mở' ?>
-                                        </button>
-                                    </form>
+                                <?php if ($isCurrentUser): ?>
+                                    <small class="block muted">Tài khoản hiện tại</small>
                                 <?php endif; ?>
+                            </td>
+
+                            <td class="right">
+                                <div class="table-actions employee-actions">
+                                    <a class="btn small outline" href="<?= e(url('employees.php?edit=' . (int) $user['id'])) ?>">Sửa</a>
+
+                                    <?php if (!$isCurrentUser): ?>
+                                        <form method="post">
+                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                            <input type="hidden" name="action" value="toggle">
+                                            <input type="hidden" name="id" value="<?= (int) $user['id'] ?>">
+
+                                            <button
+                                                class="btn small <?= $isActive ? 'danger' : 'secondary' ?>"
+                                                data-confirm="<?= $isActive ? 'Bạn chắc chắn muốn khóa tài khoản này?' : 'Bạn muốn mở lại tài khoản này?' ?>"
+                                            >
+                                                <?= $isActive ? 'Khóa' : 'Mở' ?>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+            <nav class="pagination employee-pagination">
+                <?php if ($page > 1): ?>
+                    <a href="<?= e(employee_page_url($paginationParams, $page - 1)) ?>">« Trước</a>
+                <?php else: ?>
+                    <span class="disabled">« Trước</span>
+                <?php endif; ?>
+
+                <?php
+                    $startPage = max(1, $page - 2);
+                    $endPage = min($totalPages, $page + 2);
+                ?>
+
+                <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
+                    <?php if ($i === $page): ?>
+                        <span class="active"><?= $i ?></span>
+                    <?php else: ?>
+                        <a href="<?= e(employee_page_url($paginationParams, $i)) ?>"><?= $i ?></a>
+                    <?php endif; ?>
+                <?php endfor; ?>
+
+                <?php if ($page < $totalPages): ?>
+                    <a href="<?= e(employee_page_url($paginationParams, $page + 1)) ?>">Sau »</a>
+                <?php else: ?>
+                    <span class="disabled">Sau »</span>
+                <?php endif; ?>
+            </nav>
+        <?php endif; ?>
     </section>
 </div>
 

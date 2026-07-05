@@ -3,24 +3,56 @@
 declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
 require_admin();
+
 $pdo = db();
+
+function product_page_icon(string $name, string $category): string
+{
+    $text = strtolower($name . ' ' . $category);
+
+    if (str_contains($text, 'sữa') || str_contains($text, 'sua')) return '🥛';
+    if (str_contains($text, 'nước') || str_contains($text, 'nuoc') || str_contains($text, 'đồ uống') || str_contains($text, 'do uong') || str_contains($text, 'cà phê')) return '🥤';
+    if (str_contains($text, 'bánh') || str_contains($text, 'banh') || str_contains($text, 'kẹo')) return '🍪';
+    if (str_contains($text, 'gia dụng') || str_contains($text, 'gia dung') || str_contains($text, 'khăn')) return '🧴';
+    if (str_contains($text, 'thực phẩm') || str_contains($text, 'thuc pham') || str_contains($text, 'mì')) return '🍱';
+    if (str_contains($text, 'văn phòng') || str_contains($text, 'van phong') || str_contains($text, 'bút') || str_contains($text, 'sách')) return '📚';
+    if (str_contains($text, 'đông lạnh') || str_contains($text, 'dong lanh')) return '🧊';
+
+    return '🛒';
+}
+
+function products_page_url(array $baseParams, int $page): string
+{
+    $baseParams['page'] = $page;
+    return 'products.php?' . http_build_query($baseParams);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
+
     $action = (string) ($_POST['action'] ?? '');
     $id = (int) ($_POST['id'] ?? 0);
+
     try {
         if ($action === 'toggle') {
             $stmt = $pdo->prepare('SELECT code,status FROM products WHERE id=?');
             $stmt->execute([$id]);
             $product = $stmt->fetch();
-            if (!$product) throw new RuntimeException('Không tìm thấy sản phẩm.');
+
+            if (!$product) {
+                throw new RuntimeException('Không tìm thấy sản phẩm.');
+            }
+
             $status = (int) $product['status'] === 1 ? 0 : 1;
-            $pdo->prepare('UPDATE products SET status=?, updated_at=NOW() WHERE id=?')->execute([$status, $id]);
+
+            $pdo->prepare('UPDATE products SET status=?, updated_at=NOW() WHERE id=?')
+                ->execute([$status, $id]);
+
             log_activity('product_status', ($status ? 'Kích hoạt' : 'Ngừng bán') . ' sản phẩm ' . $product['code']);
             flash('success', 'Đã cập nhật trạng thái sản phẩm.');
             redirect('products.php');
         }
+
         $code = strtoupper(trim((string) ($_POST['code'] ?? '')));
         $name = trim((string) ($_POST['name'] ?? ''));
         $category = trim((string) ($_POST['category'] ?? ''));
@@ -28,20 +60,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
         $stock = filter_var($_POST['stock'] ?? null, FILTER_VALIDATE_INT);
         $minStock = filter_var($_POST['min_stock'] ?? null, FILTER_VALIDATE_INT);
+
         if ($code === '' || $name === '' || $category === '' || $unit === '' || $price === false || $stock === false || $minStock === false) {
             throw new RuntimeException('Vui lòng nhập đầy đủ và đúng định dạng.');
         }
+
         if ($price <= 0 || $stock < 0 || $minStock < 0) {
             throw new RuntimeException('Giá phải lớn hơn 0, số lượng không được âm.');
         }
+
         if ($action === 'create') {
             $stmt = $pdo->prepare('INSERT INTO products(code,name,category,price,stock,min_stock,unit,status) VALUES(?,?,?,?,?,?,?,1)');
-            $stmt->execute([$code,$name,$category,$price,$stock,$minStock,$unit]);
+            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit]);
+
             log_activity('product_create', 'Thêm sản phẩm ' . $code . ' - ' . $name);
             flash('success', 'Đã thêm sản phẩm mới.');
         } elseif ($action === 'update' && $id > 0) {
             $stmt = $pdo->prepare('UPDATE products SET code=?,name=?,category=?,price=?,stock=?,min_stock=?,unit=?,updated_at=NOW() WHERE id=?');
-            $stmt->execute([$code,$name,$category,$price,$stock,$minStock,$unit,$id]);
+            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit, $id]);
+
             log_activity('product_update', 'Cập nhật sản phẩm ' . $code . ' - ' . $name);
             flash('success', 'Đã cập nhật sản phẩm.');
         } else {
@@ -52,63 +89,364 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (RuntimeException $exception) {
         flash('error', $exception->getMessage());
     }
+
     redirect('products.php');
 }
 
 $edit = null;
+
 if (isset($_GET['edit'])) {
     $stmt = $pdo->prepare('SELECT * FROM products WHERE id=?');
     $stmt->execute([(int) $_GET['edit']]);
     $edit = $stmt->fetch() ?: null;
+
+    if (!$edit) {
+        flash('error', 'Không tìm thấy sản phẩm cần sửa.');
+        redirect('products.php');
+    }
 }
+
+$categories = $pdo
+    ->query("SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category<>'' ORDER BY category")
+    ->fetchAll(PDO::FETCH_COLUMN);
+
+$summary = [
+    'total' => (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn(),
+    'active' => (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status=1')->fetchColumn(),
+    'low_stock' => (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status=1 AND stock<=min_stock')->fetchColumn(),
+    'inventory_value' => (float) $pdo->query('SELECT COALESCE(SUM(price*stock),0) FROM products WHERE status=1')->fetchColumn(),
+];
+
 $q = trim((string) ($_GET['q'] ?? ''));
 $status = (string) ($_GET['status'] ?? 'all');
-$sql = 'SELECT * FROM products WHERE 1=1';
+$categoryFilter = trim((string) ($_GET['category'] ?? ''));
+$page = max(1, (int) ($_GET['page'] ?? 1));
+$perPage = 10;
+$offset = ($page - 1) * $perPage;
+
+$where = ['1=1'];
 $params = [];
+
 if ($q !== '') {
-    $sql .= ' AND (code LIKE ? OR name LIKE ? OR category LIKE ?)';
-    $search = '%' . $q . '%';
-    $params = [$search,$search,$search];
+    $where[] = '(code LIKE :q OR name LIKE :q OR category LIKE :q)';
+    $params[':q'] = '%' . $q . '%';
 }
-if ($status === 'active') $sql .= ' AND status=1';
-elseif ($status === 'inactive') $sql .= ' AND status=0';
-$sql .= ' ORDER BY id DESC';
+
+if ($categoryFilter !== '') {
+    $where[] = 'category = :category';
+    $params[':category'] = $categoryFilter;
+}
+
+if ($status === 'active') {
+    $where[] = 'status=1';
+} elseif ($status === 'inactive') {
+    $where[] = 'status=0';
+} elseif ($status === 'low') {
+    $where[] = 'status=1 AND stock<=min_stock';
+} else {
+    $status = 'all';
+}
+
+$whereSql = implode(' AND ', $where);
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM products WHERE {$whereSql}");
+
+foreach ($params as $key => $value) {
+    $countStmt->bindValue($key, $value, PDO::PARAM_STR);
+}
+
+$countStmt->execute();
+$totalProducts = (int) $countStmt->fetchColumn();
+$totalPages = max(1, (int) ceil($totalProducts / $perPage));
+
+if ($page > $totalPages) {
+    $page = $totalPages;
+    $offset = ($page - 1) * $perPage;
+}
+
+$sql = "SELECT * FROM products WHERE {$whereSql} ORDER BY id DESC LIMIT :limit OFFSET :offset";
 $stmt = $pdo->prepare($sql);
-$stmt->execute($params);
+
+foreach ($params as $key => $value) {
+    $stmt->bindValue($key, $value, PDO::PARAM_STR);
+}
+
+$stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$stmt->execute();
+
 $products = $stmt->fetchAll();
+
+$paginationParams = array_filter([
+    'q' => $q,
+    'status' => $status !== 'all' ? $status : '',
+    'category' => $categoryFilter,
+], fn($value) => $value !== '');
+
 render_header('Quản lý sản phẩm', 'products');
 ?>
-<div class="two-column">
-    <section class="panel form-panel">
-        <div class="panel-heading"><div><h2><?= $edit ? 'Cập nhật sản phẩm' : 'Thêm sản phẩm' ?></h2><p>Thông tin sản phẩm và mức cảnh báo tồn kho</p></div></div>
-        <form method="post" class="form-grid">
+
+<div class="product-manager-page">
+    <section class="panel product-hero-panel">
+        <div>
+            <span class="eyebrow">DANH MỤC HÀNG HÓA</span>
+            <h2>Quản lý sản phẩm, giá bán và tồn kho trong một màn hình.</h2>
+            <p>Thêm sản phẩm mới, cập nhật tồn kho, đặt mức cảnh báo và theo dõi trạng thái kinh doanh.</p>
+        </div>
+
+        <a class="btn primary" href="#product-form-card">
+            <?= $edit ? 'Đang sửa sản phẩm' : '+ Thêm sản phẩm' ?>
+        </a>
+    </section>
+
+    <div class="stats-grid product-summary-grid">
+        <article class="mini-stat">
+            <span>Tổng sản phẩm</span>
+            <strong><?= (int) $summary['total'] ?></strong>
+            <small>Toàn bộ danh mục</small>
+        </article>
+
+        <article class="mini-stat">
+            <span>Đang bán</span>
+            <strong><?= (int) $summary['active'] ?></strong>
+            <small>Sản phẩm còn hoạt động</small>
+        </article>
+
+        <article class="mini-stat warning">
+            <span>Sắp hết hàng</span>
+            <strong><?= (int) $summary['low_stock'] ?></strong>
+            <small>Tồn kho ≤ mức cảnh báo</small>
+        </article>
+
+        <article class="mini-stat">
+            <span>Giá trị tồn kho</span>
+            <strong><?= money((float) $summary['inventory_value']) ?></strong>
+            <small>Tính theo giá bán hiện tại</small>
+        </article>
+    </div>
+
+    <section class="panel product-form-card" id="product-form-card">
+        <div class="panel-heading product-form-heading">
+            <div>
+                <h2><?= $edit ? 'Cập nhật sản phẩm' : 'Thêm sản phẩm mới' ?></h2>
+                <p><?= $edit ? 'Bạn đang chỉnh sửa mã ' . e((string) $edit['code']) : 'Nhập thông tin hàng hóa, giá bán và mức cảnh báo tồn kho.' ?></p>
+            </div>
+
+            <?php if ($edit): ?>
+                <a class="btn ghost" href="<?= e(url('products.php')) ?>">Hủy sửa</a>
+            <?php endif; ?>
+        </div>
+
+        <form method="post" class="product-form-grid">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="<?= $edit ? 'update' : 'create' ?>">
             <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
-            <label>Mã sản phẩm<input name="code" value="<?= e($edit['code'] ?? '') ?>" required></label>
-            <label>Tên sản phẩm<input name="name" value="<?= e($edit['name'] ?? '') ?>" required></label>
-            <label>Danh mục<input name="category" value="<?= e($edit['category'] ?? '') ?>" required></label>
-            <label>Đơn vị tính<input name="unit" value="<?= e($edit['unit'] ?? 'Cái') ?>" required></label>
-            <label>Giá bán<input type="number" name="price" min="1" step="1" value="<?= e($edit['price'] ?? '') ?>" required></label>
-            <label>Số lượng tồn<input type="number" name="stock" min="0" value="<?= e($edit['stock'] ?? 0) ?>" required></label>
-            <label>Mức cảnh báo<input type="number" name="min_stock" min="0" value="<?= e($edit['min_stock'] ?? 5) ?>" required></label>
-            <div class="form-actions"><button class="btn primary" type="submit"><?= $edit ? 'Lưu thay đổi' : 'Thêm sản phẩm' ?></button><?php if ($edit): ?><a class="btn ghost" href="products.php">Hủy sửa</a><?php endif; ?></div>
+
+            <label>
+                Mã sản phẩm
+                <input name="code" value="<?= e($edit['code'] ?? '') ?>" placeholder="VD: SP001" required>
+            </label>
+
+            <label class="wide-field">
+                Tên sản phẩm
+                <input name="name" value="<?= e($edit['name'] ?? '') ?>" placeholder="VD: Nước suối 500ml" required>
+            </label>
+
+            <label>
+                Danh mục
+                <input name="category" list="category-list" value="<?= e($edit['category'] ?? '') ?>" placeholder="VD: Đồ uống" required>
+                <datalist id="category-list">
+                    <?php foreach ($categories as $category): ?>
+                        <option value="<?= e($category) ?>"></option>
+                    <?php endforeach; ?>
+                </datalist>
+            </label>
+
+            <label>
+                Đơn vị tính
+                <input name="unit" value="<?= e($edit['unit'] ?? 'Cái') ?>" placeholder="Cái, chai, hộp..." required>
+            </label>
+
+            <label>
+                Giá bán
+                <input type="number" name="price" min="1" step="1" value="<?= e($edit['price'] ?? '') ?>" required>
+            </label>
+
+            <label>
+                Số lượng tồn
+                <input type="number" name="stock" min="0" value="<?= e($edit['stock'] ?? 0) ?>" required>
+            </label>
+
+            <label>
+                Mức cảnh báo
+                <input type="number" name="min_stock" min="0" value="<?= e($edit['min_stock'] ?? 5) ?>" required>
+            </label>
+
+            <div class="product-form-actions">
+                <button class="btn primary" type="submit"><?= $edit ? 'Lưu thay đổi' : 'Thêm sản phẩm' ?></button>
+
+                <?php if (!$edit): ?>
+                    <button class="btn ghost" type="reset">Làm mới</button>
+                <?php endif; ?>
+            </div>
         </form>
     </section>
-    <section class="panel">
-        <div class="panel-heading responsive"><div><h2>Danh sách sản phẩm</h2><p><?= count($products) ?> sản phẩm được tìm thấy</p></div>
-            <form method="get" class="filter-form"><input name="q" value="<?= e($q) ?>" placeholder="Tìm mã, tên, danh mục"><select name="status"><option value="all">Tất cả</option><option value="active" <?= $status==='active'?'selected':'' ?>>Đang bán</option><option value="inactive" <?= $status==='inactive'?'selected':'' ?>>Ngừng bán</option></select><button class="btn secondary">Lọc</button></form>
+
+    <section class="panel product-list-card">
+        <div class="panel-heading product-list-heading">
+            <div>
+                <h2>Danh sách sản phẩm</h2>
+                <p><?= $totalProducts ?> sản phẩm phù hợp với bộ lọc hiện tại</p>
+            </div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Mã</th><th>Sản phẩm</th><th>Giá</th><th>Tồn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-        <?php if (!$products): ?><tr><td colspan="6" class="empty">Không có sản phẩm phù hợp.</td></tr><?php endif; ?>
-        <?php foreach ($products as $product): ?><tr>
-            <td><strong><?= e($product['code']) ?></strong></td>
-            <td><?= e($product['name']) ?><small class="block muted"><?= e($product['category']) ?> · <?= e($product['unit']) ?></small></td>
-            <td><?= money($product['price']) ?></td>
-            <td><span class="stock <?= (int)$product['stock'] <= (int)$product['min_stock'] ? 'low' : '' ?>"><?= (int)$product['stock'] ?></span></td>
-            <td><span class="status <?= (int)$product['status']===1?'paid':'cancelled' ?>"><?= (int)$product['status']===1?'Đang bán':'Ngừng bán' ?></span></td>
-            <td class="actions"><a class="btn small ghost" href="?edit=<?= (int)$product['id'] ?>">Sửa</a><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$product['id'] ?>"><button class="btn small <?= (int)$product['status']===1?'danger':'secondary' ?>" data-confirm="Xác nhận thay đổi trạng thái sản phẩm?"><?= (int)$product['status']===1?'Ngừng bán':'Kích hoạt' ?></button></form></td>
-        </tr><?php endforeach; ?></tbody></table></div>
+
+        <form method="get" class="filter-form product-filter-form">
+            <label>
+                Tìm kiếm
+                <input name="q" value="<?= e($q) ?>" placeholder="Tìm mã, tên, danh mục">
+            </label>
+
+            <label>
+                Danh mục
+                <select name="category">
+                    <option value="">Tất cả danh mục</option>
+                    <?php foreach ($categories as $category): ?>
+                        <option value="<?= e($category) ?>" <?= $categoryFilter === $category ? 'selected' : '' ?>>
+                            <?= e($category) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+
+            <label>
+                Trạng thái
+                <select name="status">
+                    <option value="all" <?= $status === 'all' ? 'selected' : '' ?>>Tất cả</option>
+                    <option value="active" <?= $status === 'active' ? 'selected' : '' ?>>Đang bán</option>
+                    <option value="inactive" <?= $status === 'inactive' ? 'selected' : '' ?>>Ngừng bán</option>
+                    <option value="low" <?= $status === 'low' ? 'selected' : '' ?>>Sắp hết hàng</option>
+                </select>
+            </label>
+
+            <button class="btn secondary">Lọc</button>
+
+            <?php if ($q !== '' || $status !== 'all' || $categoryFilter !== ''): ?>
+                <a class="btn ghost" href="<?= e(url('products.php')) ?>">Xóa lọc</a>
+            <?php endif; ?>
+        </form>
+
+        <div class="table-wrap product-table-wrap">
+            <table class="product-table-modern">
+                <thead>
+                    <tr>
+                        <th>Sản phẩm</th>
+                        <th>Danh mục</th>
+                        <th class="right">Giá bán</th>
+                        <th class="right">Tồn kho</th>
+                        <th>Trạng thái</th>
+                        <th class="right">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <?php if (!$products): ?>
+                        <tr>
+                            <td colspan="6" class="empty">Không có sản phẩm phù hợp.</td>
+                        </tr>
+                    <?php endif; ?>
+
+                    <?php foreach ($products as $product): ?>
+                        <?php
+                            $productId = (int) $product['id'];
+                            $isActive = (int) $product['status'] === 1;
+                            $isLowStock = (int) $product['stock'] <= (int) $product['min_stock'];
+                            $icon = product_page_icon((string) $product['name'], (string) $product['category']);
+                        ?>
+
+                        <tr class="<?= $isLowStock && $isActive ? 'low-stock-row' : '' ?>">
+                            <td>
+                                <div class="product-name-cell modern-name-cell">
+                                    <span class="product-icon"><?= $icon ?></span>
+                                    <div>
+                                        <strong><?= e($product['name']) ?></strong>
+                                        <small class="block muted"><?= e($product['code']) ?> · <?= e($product['unit']) ?></small>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="category-pill"><?= e($product['category']) ?></span>
+                            </td>
+
+                            <td class="right">
+                                <strong class="price-text"><?= money($product['price']) ?></strong>
+                            </td>
+
+                            <td class="right">
+                                <span class="stock-pill <?= $isLowStock ? 'low' : '' ?>">
+                                    <?= (int) $product['stock'] ?>
+                                </span>
+                                <small class="block muted">Cảnh báo: <?= (int) $product['min_stock'] ?></small>
+                            </td>
+
+                            <td>
+                                <span class="status <?= $isActive ? 'paid' : 'cancelled' ?>">
+                                    <?= $isActive ? 'Đang bán' : 'Ngừng bán' ?>
+                                </span>
+                            </td>
+
+                            <td class="right">
+                                <div class="table-actions product-actions">
+                                    <a class="btn small ghost" href="<?= e(url('products.php?edit=' . $productId)) ?>">Sửa</a>
+
+                                    <form method="post">
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="toggle">
+                                        <input type="hidden" name="id" value="<?= $productId ?>">
+                                        <button
+                                            class="btn small <?= $isActive ? 'danger' : 'secondary' ?>"
+                                            data-confirm="Xác nhận thay đổi trạng thái sản phẩm?"
+                                        >
+                                            <?= $isActive ? 'Ngừng bán' : 'Kích hoạt' ?>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <?php if ($totalPages > 1): ?>
+            <nav class="pagination product-pagination">
+                <?php if ($page > 1): ?>
+                    <a href="<?= e(products_page_url($paginationParams, $page - 1)) ?>">« Trước</a>
+                <?php else: ?>
+                    <span class="disabled">« Trước</span>
+                <?php endif; ?>
+
+                <?php
+                    $startPage = max(1, $page - 2);
+                    $endPage = min($totalPages, $page + 2);
+                ?>
+
+                <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
+                    <?php if ($i === $page): ?>
+                        <span class="active"><?= $i ?></span>
+                    <?php else: ?>
+                        <a href="<?= e(products_page_url($paginationParams, $i)) ?>"><?= $i ?></a>
+                    <?php endif; ?>
+                <?php endfor; ?>
+
+                <?php if ($page < $totalPages): ?>
+                    <a href="<?= e(products_page_url($paginationParams, $page + 1)) ?>">Sau »</a>
+                <?php else: ?>
+                    <span class="disabled">Sau »</span>
+                <?php endif; ?>
+            </nav>
+        <?php endif; ?>
     </section>
 </div>
+
 <?php render_footer(); ?>

@@ -74,27 +74,158 @@ $isLocked = (int) ($_SESSION['login_lock_until'] ?? 0) > time();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Đăng nhập | Quản lý bán hàng</title>
-    <link rel="stylesheet" href="<?= e(url('assets/css/style.css')) ?>">
+    <link rel="stylesheet" href="<?= e(url('assets/css/style.css?v=6')) ?>">
 </head>
 <body class="login-page">
-<div class="login-card">
-    <div class="login-logo">🛒</div>
-    <h1>Quản lý bán hàng tại quầy</h1>
-    <p>Đăng nhập theo vai trò: quản lý, thu ngân hoặc nhân viên kho</p>
-    <?php if ($success): ?><div class="alert success"><?= e($success) ?></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert error"><?= e($error) ?></div><?php endif; ?>
-    <form method="post" class="form-grid one-column">
-        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-        <label>Tên đăng nhập<input name="username" autocomplete="username" required <?= $isLocked ? 'disabled' : '' ?>></label>
-        <label>Mật khẩu<input type="password" name="password" autocomplete="current-password" required <?= $isLocked ? 'disabled' : '' ?>></label>
-        <button class="btn primary full" type="submit" <?= $isLocked ? 'disabled' : '' ?>><?= $isLocked ? 'Đang tạm khóa' : 'Đăng nhập' ?></button>
-    </form>
-    <div class="demo-account">
-        <strong>Tài khoản thử nghiệm</strong>
-        <span>admin / 123456</span>
-        <span>nhanvien / 123456</span>
-        <span>kho / 123456</span>
-    </div>
+<div class="login-split">
+    <section class="login-showcase">
+        <div class="showcase-content">
+            <div class="showcase-logo">🛒</div>
+            <span class="eyebrow">POS MINI</span>
+            <h2>Quản lý bán hàng tại quầy gọn gàng hơn.</h2>
+            <p>Theo dõi doanh thu, kiểm tra tồn kho và phân quyền nhân viên trong một giao diện đơn giản, dễ dùng cho cửa hàng bán lẻ.</p>
+
+            <div class="showcase-visual">
+                <div class="visual-top">
+                    <div>
+                        <strong>Doanh thu hôm nay</strong>
+                        <span>Cập nhật theo hóa đơn đã thanh toán</span>
+                    </div>
+                    <span class="visual-badge">+12%</span>
+                </div>
+
+                <div class="visual-list">
+                    <div class="visual-item">
+                        <span class="visual-icon">🧾</span>
+                        <div>
+                            <strong>Hóa đơn nhanh</strong>
+                            <span>Lập, xem và in hóa đơn tại quầy</span>
+                        </div>
+                    </div>
+
+                    <div class="visual-item">
+                        <span class="visual-icon">📦</span>
+                        <div>
+                            <strong>Cảnh báo tồn kho</strong>
+                            <span>Nhận biết sản phẩm sắp hết hàng</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-cards">
+                <div class="feature-card">
+                    <span>📈</span>
+                    <b>Doanh thu</b>
+                    <small>Theo dõi kết quả bán hàng.</small>
+                </div>
+                <div class="feature-card">
+                    <span>📦</span>
+                    <b>Tồn kho</b>
+                    <small>Kiểm soát số lượng hàng.</small>
+                </div>
+                <div class="feature-card">
+                    <span>🔐</span>
+                    <b>Phân quyền</b>
+                    <small>Quản lý, thu ngân, kho.</small>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <main class="login-form-side">
+        <div class="login-card">
+            <div class="login-mobile-brand">
+                <span>🛒</span>
+                <strong>POS Mini</strong>
+            </div>
+
+            <h1>Đăng nhập hệ thống</h1>
+            <p>Đăng nhập theo vai trò: quản lý, thu ngân hoặc nhân viên kho.</p>
+
+            <?php if ($success): ?>
+                <div class="alert success"><?= e($success) ?></div>
+            <?php endif; ?>
+
+            <?php if ($error): ?>
+                <div class="alert error login-alert">
+                    <span class="ti-alert-circle login-alert-icon" aria-hidden="true">⚠️</span>
+                    <span><?= e($error) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" class="form-grid one-column login-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+
+                <label>
+                    Tên đăng nhập
+                    <span class="login-field">
+                        <span class="field-icon" aria-hidden="true">👤</span>
+                        <input name="username" autocomplete="username" required <?= $isLocked ? 'disabled' : '' ?>>
+                    </span>
+                </label>
+
+                <label>
+                    Mật khẩu
+                    <span class="login-field password-field">
+                        <span class="field-icon" aria-hidden="true">🔒</span>
+                        <input id="login-password" type="password" name="password" autocomplete="current-password" required <?= $isLocked ? 'disabled' : '' ?>>
+                        <button class="password-toggle" type="button" id="toggle-password" aria-label="Hiện mật khẩu" <?= $isLocked ? 'disabled' : '' ?>>👁</button>
+                    </span>
+                </label>
+
+                <div class="login-options">
+                    <label class="remember-check">
+                        <input type="checkbox" name="remember" value="1" <?= $isLocked ? 'disabled' : '' ?>>
+                        Ghi nhớ đăng nhập
+                    </label>
+                    <a class="forgot-link" href="#" onclick="return false;">Quên mật khẩu?</a>
+                </div>
+
+                <button class="btn primary full" type="submit" <?= $isLocked ? 'disabled' : '' ?>>
+                    <?= $isLocked ? 'Đang tạm khóa' : 'Đăng nhập' ?>
+                </button>
+            </form>
+
+            <details class="demo-account">
+                <summary>Xem tài khoản thử nghiệm</summary>
+                <table class="demo-table">
+                    <thead>
+                        <tr>
+                            <th>Vai trò</th>
+                            <th>Tài khoản / mật khẩu</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Quản lý</td>
+                            <td><code>admin</code> / <code>123456</code></td>
+                        </tr>
+                        <tr>
+                            <td>Thu ngân</td>
+                            <td><code>nhanvien</code> / <code>123456</code></td>
+                        </tr>
+                        <tr>
+                            <td>Nhân viên kho</td>
+                            <td><code>kho</code> / <code>123456</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </details>
+        </div>
+    </main>
 </div>
+
+<script>
+    const togglePasswordButton = document.getElementById('toggle-password');
+    const passwordInput = document.getElementById('login-password');
+
+    togglePasswordButton?.addEventListener('click', function () {
+        const isPassword = passwordInput.type === 'password';
+        passwordInput.type = isPassword ? 'text' : 'password';
+        this.textContent = isPassword ? '🙈' : '👁';
+        this.setAttribute('aria-label', isPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu');
+    });
+</script>
 </body>
 </html>
