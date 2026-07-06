@@ -4276,3 +4276,123 @@ textarea:focus {
         justify-content: center;
     }
 }
+/* ===== PRODUCT IMAGE UPLOAD ===== */
+
+.product-form-with-image {
+    grid-template-columns: 180px minmax(260px, 1.2fr) minmax(190px, 0.9fr) minmax(140px, 0.7fr);
+}
+
+.product-image-field {
+    grid-column: span 2;
+}
+
+.product-image-upload-card {
+    min-height: 128px;
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    border-radius: 18px;
+    background: #f8fbff;
+    border: 1px dashed #93c5fd;
+}
+
+.product-image-upload-card img,
+.product-image-upload-card .image-placeholder {
+    width: 118px;
+    height: 92px;
+    display: grid;
+    place-items: center;
+    object-fit: cover;
+    border-radius: 16px;
+    background: #ffffff;
+    border: 1px solid #dbeafe;
+    font-size: 34px;
+}
+
+.product-image-upload-card input[type="file"] {
+    padding: 10px;
+    background: #ffffff;
+}
+
+.product-photo {
+    overflow: hidden;
+    background: #f8fafc;
+}
+
+.product-photo img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    border-radius: inherit;
+}
+
+@media (max-width: 1250px) {
+    .product-form-with-image,
+    .product-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .product-image-field {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 700px) {
+    .product-form-with-image,
+    .product-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .product-image-upload-card {
+        grid-template-columns: 1fr;
+    }
+
+    .product-image-upload-card img,
+    .product-image-upload-card .image-placeholder {
+        width: 100%;
+        height: 170px;
+    }
+}
+/* ===== FIX PRODUCT IMAGE TOO BIG ===== */
+
+.product-table-modern .product-name-cell,
+.product-table-modern .modern-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.product-table-modern .product-photo,
+.product-table-modern .product-icon {
+    width: 52px !important;
+    height: 52px !important;
+    min-width: 52px !important;
+    max-width: 52px !important;
+    max-height: 52px !important;
+    flex: 0 0 52px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid #dbeafe;
+    font-size: 22px;
+}
+
+.product-table-modern .product-photo img,
+.product-table-modern .product-icon img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 52px !important;
+    max-height: 52px !important;
+    object-fit: cover;
+    display: block;
+    border-radius: 14px;
+}
+
+.product-table-modern td {
+    vertical-align: middle;
+}

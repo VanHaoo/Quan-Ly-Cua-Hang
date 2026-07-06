@@ -6,6 +6,118 @@ require_admin();
 
 $pdo = db();
 
+function product_table_has_column(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+
+    $key = $table . '.' . $column;
+
+    if (!isset($cache[$key])) {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND COLUMN_NAME = ?
+        ");
+        $stmt->execute([$table, $column]);
+        $cache[$key] = (int) $stmt->fetchColumn() > 0;
+    }
+
+    return $cache[$key];
+}
+
+/*
+ * Trong CSDL hiện tại, `products` là VIEW, bảng thật là `SanPham`.
+ * Vì vậy muốn thêm cột hình ảnh phải ALTER TABLE SanPham, sau đó tạo lại VIEW products.
+ */
+if (!product_table_has_column($pdo, 'SanPham', 'hinhAnh')) {
+    $pdo->exec("ALTER TABLE SanPham ADD hinhAnh VARCHAR(255) NULL AFTER donViTinh");
+}
+
+$pdo->exec("
+    CREATE OR REPLACE VIEW products AS
+    SELECT
+        maSP AS id,
+        maSanPham AS code,
+        tenSP AS name,
+        danhMuc AS category,
+        donGia AS price,
+        soLuongTon AS stock,
+        mucCanhBao AS min_stock,
+        donViTinh AS unit,
+        hinhAnh AS image,
+        trangThai AS status,
+        ngayTao AS created_at,
+        ngayCapNhat AS updated_at
+    FROM SanPham
+");
+
+function product_upload_image(string $fieldName, ?string $currentImage = null): ?string
+{
+    if (!isset($_FILES[$fieldName]) || ($_FILES[$fieldName]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return $currentImage;
+    }
+
+    if ($_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Không thể tải hình sản phẩm lên.');
+    }
+
+    $maxSize = 2 * 1024 * 1024;
+
+    if ((int) $_FILES[$fieldName]['size'] > $maxSize) {
+        throw new RuntimeException('Hình sản phẩm không được vượt quá 2MB.');
+    }
+
+    $tmpPath = (string) $_FILES[$fieldName]['tmp_name'];
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = (string) $finfo->file($tmpPath);
+
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Chỉ hỗ trợ hình JPG, PNG hoặc WEBP.');
+    }
+
+    $uploadDir = __DIR__ . '/uploads/products';
+
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0775, true);
+    }
+
+    $fileName = 'product_' . date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $allowed[$mime];
+    $targetPath = $uploadDir . '/' . $fileName;
+
+    if (!move_uploaded_file($tmpPath, $targetPath)) {
+        throw new RuntimeException('Không thể lưu hình sản phẩm.');
+    }
+
+    if ($currentImage && str_starts_with($currentImage, 'uploads/products/')) {
+        $oldPath = __DIR__ . '/' . $currentImage;
+
+        if (is_file($oldPath)) {
+            @unlink($oldPath);
+        }
+    }
+
+    return 'uploads/products/' . $fileName;
+}
+
+function product_image_html(array $product, string $fallbackIcon): string
+{
+    $image = trim((string) ($product['image'] ?? ''));
+
+    if ($image !== '') {
+        return '<img src="' . e(url($image)) . '" alt="' . e((string) $product['name']) . '">';
+    }
+
+    return e($fallbackIcon);
+}
+
 function product_page_icon(string $name, string $category): string
 {
     $text = strtolower($name . ' ' . $category);
@@ -60,6 +172,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
         $stock = filter_var($_POST['stock'] ?? null, FILTER_VALIDATE_INT);
         $minStock = filter_var($_POST['min_stock'] ?? null, FILTER_VALIDATE_INT);
+        $currentImage = null;
+
+        if ($action === 'update' && $id > 0) {
+            $imageStmt = $pdo->prepare('SELECT image FROM products WHERE id=?');
+            $imageStmt->execute([$id]);
+            $currentImage = (string) ($imageStmt->fetchColumn() ?: '');
+        }
+
+        $image = product_upload_image('image', $currentImage);
 
         if ($code === '' || $name === '' || $category === '' || $unit === '' || $price === false || $stock === false || $minStock === false) {
             throw new RuntimeException('Vui lòng nhập đầy đủ và đúng định dạng.');
@@ -70,14 +191,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'create') {
-            $stmt = $pdo->prepare('INSERT INTO products(code,name,category,price,stock,min_stock,unit,status) VALUES(?,?,?,?,?,?,?,1)');
-            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit]);
+            $stmt = $pdo->prepare('INSERT INTO products(code,name,category,price,stock,min_stock,unit,image,status) VALUES(?,?,?,?,?,?,?,?,1)');
+            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit, $image]);
 
             log_activity('product_create', 'Thêm sản phẩm ' . $code . ' - ' . $name);
             flash('success', 'Đã thêm sản phẩm mới.');
         } elseif ($action === 'update' && $id > 0) {
-            $stmt = $pdo->prepare('UPDATE products SET code=?,name=?,category=?,price=?,stock=?,min_stock=?,unit=?,updated_at=NOW() WHERE id=?');
-            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit, $id]);
+            $stmt = $pdo->prepare('UPDATE products SET code=?,name=?,category=?,price=?,stock=?,min_stock=?,unit=?,image=?,updated_at=NOW() WHERE id=?');
+            $stmt->execute([$code, $name, $category, $price, $stock, $minStock, $unit, $image, $id]);
 
             log_activity('product_update', 'Cập nhật sản phẩm ' . $code . ' - ' . $name);
             flash('success', 'Đã cập nhật sản phẩm.');
@@ -237,7 +358,7 @@ render_header('Quản lý sản phẩm', 'products');
             <?php endif; ?>
         </div>
 
-        <form method="post" class="product-form-grid">
+        <form method="post" class="product-form-grid product-form-with-image" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="<?= $edit ? 'update' : 'create' ?>">
             <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
@@ -280,6 +401,20 @@ render_header('Quản lý sản phẩm', 'products');
             <label>
                 Mức cảnh báo
                 <input type="number" name="min_stock" min="0" value="<?= e($edit['min_stock'] ?? 5) ?>" required>
+            </label>
+
+            <label class="product-image-field">
+                Hình sản phẩm
+                <span class="product-image-upload-card">
+                    <?php if (!empty($edit['image'])): ?>
+                        <img src="<?= e(url((string) $edit['image'])) ?>" alt="Hình sản phẩm hiện tại">
+                    <?php else: ?>
+                        <span class="image-placeholder">🖼️</span>
+                    <?php endif; ?>
+
+                    <input type="file" name="image" accept="image/jpeg,image/png,image/webp">
+                </span>
+                <small class="muted">JPG, PNG hoặc WEBP · tối đa 2MB</small>
             </label>
 
             <div class="product-form-actions">
@@ -366,7 +501,7 @@ render_header('Quản lý sản phẩm', 'products');
                         <tr class="<?= $isLowStock && $isActive ? 'low-stock-row' : '' ?>">
                             <td>
                                 <div class="product-name-cell modern-name-cell">
-                                    <span class="product-icon"><?= $icon ?></span>
+                                    <span class="product-icon product-photo"><?= product_image_html($product, $icon) ?></span>
                                     <div>
                                         <strong><?= e($product['name']) ?></strong>
                                         <small class="block muted"><?= e($product['code']) ?> · <?= e($product['unit']) ?></small>
