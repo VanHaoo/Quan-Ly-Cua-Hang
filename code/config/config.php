@@ -2,10 +2,23 @@
 
 declare(strict_types=1);
 
-const DB_HOST = 'localhost';
-const DB_NAME = 'quan_ly_ban_hang';
-const DB_USER = 'root';
-const DB_PASS = '';
+$hostName = $_SERVER['HTTP_HOST'] ?? '';
+
+$isLocal = str_contains($hostName, 'localhost') || str_contains($hostName, '127.0.0.1');
+
+if ($isLocal) {
+    // Chạy trên máy bạn bằng XAMPP
+    define('DB_HOST', 'localhost');
+    define('DB_NAME', 'quan_ly_ban_hang');
+    define('DB_USER', 'root');
+    define('DB_PASS', '');
+} else {
+    // Chạy trên hosting InfinityFree
+    define('DB_HOST', 'sql203.infinityfree.com');
+    define('DB_NAME', 'if0_42346807_quanlycuahang');
+    define('DB_USER', 'if0_42346807');
+    define('DB_PASS', 'Haoquan112006');
+}
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     ini_set('session.use_strict_mode', '1');

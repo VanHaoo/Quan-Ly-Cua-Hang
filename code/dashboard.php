@@ -1,12 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 require_once __DIR__ . '/config/config.php';
 require_login();
 
 $pdo = db();
-$userId = (int) current_user()['id'];
+$user = current_user();
+$userId = (int) ($user['id'] ?? 0);
+$role = (string) ($user['role'] ?? '');
 $isAdmin = is_admin();
+$isWarehouseOnly = $role === 'warehouse';
 
 function dashboard_scalar(PDO $pdo, string $sql, array $params = []): mixed
 {
@@ -44,6 +48,571 @@ function dashboard_compare(float $current, float $previous): array
         'text' => 'Không đổi so với hôm qua',
     ];
 }
+
+function dashboard_money_short(float $value): string
+{
+    return money($value);
+}
+
+/* =========================
+   DASHBOARD RIÊNG CHO NHÂN VIÊN KHO
+   ========================= */
+if ($isWarehouseOnly) {
+    $productCount = (int) dashboard_scalar($pdo, "SELECT COUNT(*) FROM products WHERE status=1");
+    $totalStockQty = (int) dashboard_scalar($pdo, "SELECT COALESCE(SUM(stock),0) FROM products WHERE status=1");
+    $lowStockCount = (int) dashboard_scalar($pdo, "SELECT COUNT(*) FROM products WHERE status=1 AND stock<=min_stock");
+    $outOfStockCount = (int) dashboard_scalar($pdo, "SELECT COUNT(*) FROM products WHERE status=1 AND stock<=0");
+
+    $todayImportCount = (int) dashboard_scalar(
+        $pdo,
+        "SELECT COUNT(*) FROM stock_imports WHERE DATE(created_at)=CURDATE()"
+    );
+
+    $yesterdayImportCount = (int) dashboard_scalar(
+        $pdo,
+        "SELECT COUNT(*) FROM stock_imports WHERE DATE(created_at)=DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
+    );
+
+    $todayImportValue = (float) dashboard_scalar(
+        $pdo,
+        "SELECT COALESCE(SUM(total_amount),0) FROM stock_imports WHERE DATE(created_at)=CURDATE()"
+    );
+
+    $todayImportedQty = (int) dashboard_scalar(
+        $pdo,
+        "SELECT COALESCE(SUM(d.quantity),0)
+         FROM stock_import_details d
+         JOIN stock_imports si ON si.id=d.stock_import_id
+         WHERE DATE(si.created_at)=CURDATE()"
+    );
+
+    $monthImportValue = (float) dashboard_scalar(
+        $pdo,
+        "SELECT COALESCE(SUM(total_amount),0)
+         FROM stock_imports
+         WHERE YEAR(created_at)=YEAR(CURDATE())
+         AND MONTH(created_at)=MONTH(CURDATE())"
+    );
+
+    $importCompare = dashboard_compare((float) $todayImportCount, (float) $yesterdayImportCount);
+    $notificationCount = $lowStockCount;
+
+    $lowStock = $pdo
+        ->query("SELECT id,code,name,stock,min_stock,unit
+                 FROM products
+                 WHERE status=1 AND stock<=min_stock
+                 ORDER BY stock ASC, name ASC
+                 LIMIT 8")
+        ->fetchAll();
+
+    $recentImports = $pdo
+        ->query("SELECT si.*, u.full_name
+                 FROM stock_imports si
+                 LEFT JOIN users u ON u.id=si.user_id
+                 ORDER BY si.id DESC
+                 LIMIT 8")
+        ->fetchAll();
+
+    $recentImportItems = $pdo
+        ->query("SELECT d.product_code,d.product_name,d.quantity,d.cost_price,d.subtotal,si.import_code,si.created_at
+                 FROM stock_import_details d
+                 JOIN stock_imports si ON si.id=d.stock_import_id
+                 ORDER BY d.id DESC
+                 LIMIT 8")
+        ->fetchAll();
+
+    $chartRows = $pdo
+        ->query("SELECT DATE(si.created_at) AS import_date,
+                        COALESCE(SUM(d.quantity),0) AS total_qty,
+                        COALESCE(SUM(d.subtotal),0) AS total_amount
+                 FROM stock_imports si
+                 LEFT JOIN stock_import_details d ON d.stock_import_id=si.id
+                 WHERE si.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+                 GROUP BY DATE(si.created_at)
+                 ORDER BY import_date ASC")
+        ->fetchAll();
+
+    $chartMap = [];
+    foreach ($chartRows as $row) {
+        $chartMap[(string) $row['import_date']] = [
+            'qty' => (int) $row['total_qty'],
+            'amount' => (float) $row['total_amount'],
+        ];
+    }
+
+    $chartData = [];
+    for ($i = 6; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-{$i} days"));
+        $chartData[] = [
+            'date' => $date,
+            'label' => date('d/m', strtotime($date)),
+            'qty' => $chartMap[$date]['qty'] ?? 0,
+            'amount' => $chartMap[$date]['amount'] ?? 0,
+        ];
+    }
+
+    $maxChartQty = max(1, max(array_column($chartData, 'qty')));
+
+    render_header('Bảng điều khiển kho', 'dashboard');
+    ?>
+
+    <style>
+        .warehouse-hero {
+            min-height: 150px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            padding: 26px 30px;
+            border-radius: 24px;
+            background:
+                radial-gradient(circle at 92% 8%, rgba(56,189,248,0.18), transparent 28%),
+                linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239,246,255,0.94));
+        }
+
+        .warehouse-hero h2 {
+            max-width: 780px;
+            margin: 8px 0;
+            color: #0f172a;
+            font-size: 28px;
+            line-height: 1.2;
+        }
+
+        .warehouse-hero p {
+            max-width: 760px;
+            margin: 0;
+            color: #64748b;
+            line-height: 1.55;
+        }
+
+        .warehouse-actions {
+            min-width: 190px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .warehouse-stats-grid {
+            grid-template-columns: repeat(6, minmax(135px, 1fr));
+        }
+
+        .warehouse-main-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+            gap: 18px;
+            align-items: start;
+            margin-bottom: 18px;
+        }
+
+        .warehouse-main-grid .panel {
+            margin-bottom: 0;
+        }
+
+        .warehouse-chart {
+            height: 250px;
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 14px;
+            align-items: end;
+            padding: 14px 4px 4px;
+        }
+
+        .warehouse-chart-item {
+            height: 100%;
+            display: grid;
+            grid-template-rows: 25px 1fr 24px;
+            gap: 8px;
+            text-align: center;
+            min-width: 0;
+        }
+
+        .warehouse-chart-value {
+            color: #334155;
+            font-size: 13px;
+            font-weight: 850;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .warehouse-chart-track {
+            height: 100%;
+            min-height: 150px;
+            display: flex;
+            align-items: end;
+            justify-content: center;
+            padding: 0 6px;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #f8fbff, #eff6ff);
+            border: 1px solid #dbeafe;
+        }
+
+        .warehouse-chart-bar {
+            width: 100%;
+            max-width: 52px;
+            min-height: 6px;
+            border-radius: 12px 12px 4px 4px;
+            background: linear-gradient(180deg, #38bdf8, #2563eb);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .warehouse-chart-item.is-zero .warehouse-chart-bar {
+            background: #cbd5e1;
+            box-shadow: none;
+            opacity: 0.7;
+        }
+
+        .warehouse-chart-label {
+            color: #475569;
+            font-size: 13px;
+            font-weight: 850;
+        }
+
+        .warehouse-notice-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .warehouse-notice {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 13px;
+            border-radius: 16px;
+            background: #f8fbff;
+            border: 1px solid #e2e8f0;
+        }
+
+        .warehouse-notice strong,
+        .warehouse-notice span {
+            display: block;
+        }
+
+        .warehouse-notice span {
+            margin-top: 3px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .warehouse-notice.warning {
+            background: #fff7ed;
+            border-color: #fed7aa;
+        }
+
+        .import-code-pill {
+            display: inline-flex;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 850;
+            font-size: 12px;
+        }
+
+        @media (max-width: 1250px) {
+            .warehouse-stats-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .warehouse-main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 800px) {
+            .warehouse-hero {
+                display: block;
+                padding: 22px;
+            }
+
+            .warehouse-actions {
+                margin-top: 16px;
+            }
+
+            .warehouse-stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .warehouse-chart {
+                overflow-x: auto;
+                grid-template-columns: repeat(7, minmax(82px, 1fr));
+            }
+        }
+    </style>
+
+    <section class="panel warehouse-hero">
+        <div>
+            <span class="eyebrow">Tổng quan kho</span>
+            <h2>Theo dõi tồn kho, phiếu nhập và các sản phẩm cần bổ sung hàng.</h2>
+            <p>Dashboard này chỉ hiển thị những thông tin phục vụ nghiệp vụ kho, tránh lẫn với doanh thu và hóa đơn của bộ phận bán hàng.</p>
+        </div>
+
+        <div class="warehouse-actions">
+            <span class="notification-pill">⚠️ <?= $notificationCount ?> cảnh báo kho</span>
+            <a class="btn primary" href="<?= e(url('stock_import.php')) ?>">Tạo phiếu nhập</a>
+            <a class="btn secondary" href="<?= e(url('inventory.php')) ?>">Kiểm tra tồn kho</a>
+        </div>
+    </section>
+
+    <div class="stats-grid manager-stats-grid warehouse-stats-grid">
+        <article class="stat-card">
+            <span>Tổng sản phẩm</span>
+            <strong><?= $productCount ?></strong>
+            <small>Sản phẩm đang theo dõi</small>
+        </article>
+
+        <article class="stat-card">
+            <span>Tổng tồn kho</span>
+            <strong><?= number_format($totalStockQty, 0, ',', '.') ?></strong>
+            <small>Số lượng hiện có</small>
+        </article>
+
+        <article class="stat-card warning">
+            <span>Sản phẩm sắp hết</span>
+            <strong><?= $lowStockCount ?></strong>
+            <small>Cần nhập bổ sung</small>
+        </article>
+
+        <article class="stat-card warning">
+            <span>Hết hàng</span>
+            <strong><?= $outOfStockCount ?></strong>
+            <small>Cần xử lý gấp</small>
+        </article>
+
+        <article class="stat-card">
+            <span>Phiếu nhập hôm nay</span>
+            <strong><?= $todayImportCount ?></strong>
+            <small class="trend-badge <?= e($importCompare['class']) ?>"><?= e($importCompare['text']) ?></small>
+        </article>
+
+        <article class="stat-card">
+            <span>Hàng nhập hôm nay</span>
+            <strong><?= number_format($todayImportedQty, 0, ',', '.') ?></strong>
+            <small><?= money($todayImportValue) ?></small>
+        </article>
+    </div>
+
+    <div class="warehouse-main-grid">
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Lượng hàng nhập 7 ngày</h2>
+                    <p>Theo dõi nhanh số lượng sản phẩm đã nhập kho trong tuần.</p>
+                </div>
+                <a class="btn secondary" href="<?= e(url('stock_import.php')) ?>">Xem phiếu nhập</a>
+            </div>
+
+            <div class="warehouse-chart">
+                <?php foreach ($chartData as $item): ?>
+                    <?php
+                        $qty = (int) $item['qty'];
+                        $barHeight = $qty > 0 ? max(16, (int) round(($qty / $maxChartQty) * 100)) : 4;
+                    ?>
+
+                    <div class="warehouse-chart-item <?= $qty > 0 ? 'has-value' : 'is-zero' ?>" title="<?= e($item['label'] . ' - ' . $qty . ' sản phẩm') ?>">
+                        <div class="warehouse-chart-value"><?= $qty ?></div>
+                        <div class="warehouse-chart-track">
+                            <div class="warehouse-chart-bar" style="height: <?= $barHeight ?>%;"></div>
+                        </div>
+                        <div class="warehouse-chart-label"><?= e($item['label']) ?></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Thông báo kho</h2>
+                    <p>Các việc cần ưu tiên xử lý trong ngày.</p>
+                </div>
+            </div>
+
+            <div class="warehouse-notice-list">
+                <a class="warehouse-notice warning" href="<?= e(url('inventory.php')) ?>">
+                    <div>
+                        <strong>⚠️ <?= $lowStockCount ?> sản phẩm sắp hết</strong>
+                        <span>Kiểm tra tồn kho và lập phiếu nhập kịp thời.</span>
+                    </div>
+                    <span>›</span>
+                </a>
+
+                <a class="warehouse-notice warning" href="<?= e(url('inventory.php')) ?>">
+                    <div>
+                        <strong>⛔ <?= $outOfStockCount ?> sản phẩm hết hàng</strong>
+                        <span>Cần ưu tiên nhập lại để tránh gián đoạn bán hàng.</span>
+                    </div>
+                    <span>›</span>
+                </a>
+
+                <a class="warehouse-notice" href="<?= e(url('stock_import.php')) ?>">
+                    <div>
+                        <strong>📥 <?= $todayImportCount ?> phiếu nhập hôm nay</strong>
+                        <span>Tổng giá trị nhập: <?= money($todayImportValue) ?></span>
+                    </div>
+                    <span>›</span>
+                </a>
+
+                <div class="warehouse-notice">
+                    <div>
+                        <strong>📦 Giá trị nhập tháng này</strong>
+                        <span><?= money($monthImportValue) ?></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="warehouse-main-grid">
+        <section class="panel priority-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Cảnh báo tồn kho</h2>
+                    <p>Danh sách sản phẩm đã chạm mức cảnh báo hoặc đã hết hàng.</p>
+                </div>
+                <a class="btn secondary" href="<?= e(url('stock_import.php')) ?>">Nhập hàng</a>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã</th>
+                            <th>Sản phẩm</th>
+                            <th class="right">Tồn</th>
+                            <th class="right">Mức cảnh báo</th>
+                            <th class="right">Thao tác</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <?php if (!$lowStock): ?>
+                            <tr>
+                                <td colspan="5" class="empty compact-empty">Không có sản phẩm sắp hết.</td>
+                            </tr>
+                        <?php endif; ?>
+
+                        <?php foreach ($lowStock as $row): ?>
+                            <tr>
+                                <td><strong><?= e($row['code']) ?></strong></td>
+                                <td><?= e($row['name']) ?></td>
+                                <td class="right">
+                                    <span class="stock <?= (int) $row['stock'] <= 0 ? 'low' : '' ?>">
+                                        <?= (int) $row['stock'] ?> <?= e($row['unit']) ?>
+                                    </span>
+                                </td>
+                                <td class="right"><?= (int) $row['min_stock'] ?></td>
+                                <td class="right">
+                                    <a class="btn small secondary quick-stock-btn" href="<?= e(url('stock_import.php')) ?>">Nhập hàng</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel recent-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Phiếu nhập gần đây</h2>
+                    <p>Các lần nhập hàng mới nhất của kho.</p>
+                </div>
+                <a class="btn secondary" href="<?= e(url('stock_import.php')) ?>">Xem tất cả</a>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã phiếu</th>
+                            <th>Nhà cung cấp</th>
+                            <th>Người nhập</th>
+                            <th class="right">Tổng tiền</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <?php if (!$recentImports): ?>
+                            <tr>
+                                <td colspan="4" class="empty compact-empty">Chưa có phiếu nhập.</td>
+                            </tr>
+                        <?php endif; ?>
+
+                        <?php foreach ($recentImports as $import): ?>
+                            <tr>
+                                <td>
+                                    <a class="import-code-pill" href="<?= e(url('stock_import.php?id=' . $import['id'])) ?>">
+                                        <?= e($import['import_code']) ?>
+                                    </a>
+                                    <small class="block muted"><?= date('d/m/Y H:i', strtotime($import['created_at'])) ?></small>
+                                </td>
+                                <td><?= e($import['supplier'] ?: 'Không ghi') ?></td>
+                                <td><?= e($import['full_name'] ?: 'Hệ thống') ?></td>
+                                <td class="right"><?= money((float) $import['total_amount']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Sản phẩm vừa nhập</h2>
+                <p>Theo dõi nhanh các mặt hàng vừa được bổ sung vào kho.</p>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã phiếu</th>
+                        <th>Sản phẩm</th>
+                        <th class="right">Số lượng</th>
+                        <th class="right">Giá nhập</th>
+                        <th class="right">Thành tiền</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <?php if (!$recentImportItems): ?>
+                        <tr>
+                            <td colspan="5" class="empty compact-empty">Chưa có sản phẩm nhập gần đây.</td>
+                        </tr>
+                    <?php endif; ?>
+
+                    <?php foreach ($recentImportItems as $item): ?>
+                        <tr>
+                            <td>
+                                <span class="import-code-pill"><?= e($item['import_code']) ?></span>
+                                <small class="block muted"><?= date('d/m/Y H:i', strtotime($item['created_at'])) ?></small>
+                            </td>
+                            <td>
+                                <strong><?= e($item['product_name']) ?></strong>
+                                <small class="block muted"><?= e($item['product_code']) ?></small>
+                            </td>
+                            <td class="right"><?= (int) $item['quantity'] ?></td>
+                            <td class="right"><?= money((float) $item['cost_price']) ?></td>
+                            <td class="right"><?= money((float) $item['subtotal']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <?php
+    render_footer();
+    exit;
+}
+
+/* =========================
+   DASHBOARD CHO ADMIN / THU NGÂN
+   ========================= */
 
 $userFilter = $isAdmin ? '' : ' AND user_id = ?';
 $userParams = $isAdmin ? [] : [$userId];
@@ -84,9 +653,9 @@ $canceledToday = (int) dashboard_scalar(
     $userParams
 );
 
-$productCount = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status=1')->fetchColumn();
-$lowStockCount = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status=1 AND stock<=min_stock')->fetchColumn();
-$customerCount = (int) $pdo->query('SELECT COUNT(*) FROM customers WHERE status=1')->fetchColumn();
+$productCount = (int) dashboard_scalar($pdo, 'SELECT COUNT(*) FROM products WHERE status=1');
+$lowStockCount = (int) dashboard_scalar($pdo, 'SELECT COUNT(*) FROM products WHERE status=1 AND stock<=min_stock');
+$customerCount = (int) dashboard_scalar($pdo, 'SELECT COUNT(*) FROM customers WHERE status=1');
 
 $revenueCompare = dashboard_compare($todayRevenue, $yesterdayRevenue);
 $invoiceCompare = dashboard_compare((float) $todayInvoices, (float) $yesterdayInvoices);
@@ -200,65 +769,85 @@ render_header('Bảng điều khiển', 'dashboard');
         color: #475569;
     }
 
-    .dashboard-insight-grid {
+    .dashboard-insight-grid,
+    .dashboard-main-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.8fr);
         gap: 18px;
         align-items: stretch;
         margin-bottom: 18px;
     }
 
-    .dashboard-insight-grid .panel {
+    .dashboard-insight-grid {
+        grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.8fr);
+    }
+
+    .dashboard-main-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .dashboard-insight-grid .panel,
+    .dashboard-main-grid .panel {
         margin-bottom: 0;
     }
 
-    .revenue-chart {
-        height: 230px;
+    .simple-column-chart {
+        height: 260px;
         display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 12px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 14px;
         align-items: end;
-        padding-top: 12px;
+        padding: 14px 6px 4px;
     }
 
-    .chart-item {
+    .simple-column {
         height: 100%;
+        min-width: 0;
         display: grid;
-        grid-template-rows: auto 1fr auto;
+        grid-template-rows: 24px 1fr 24px;
         gap: 8px;
         text-align: center;
-        min-width: 0;
     }
 
-    .chart-value {
-        color: #64748b;
-        font-size: 11px;
+    .simple-column-value {
+        color: #334155;
+        font-size: 13px;
+        font-weight: 850;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
-    .chart-bar-wrap {
+    .simple-column-track {
         height: 100%;
+        min-height: 160px;
         display: flex;
         align-items: end;
         justify-content: center;
-        border-radius: 999px;
-        background: #eff6ff;
-        overflow: hidden;
+        padding: 0 6px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #f8fbff, #eff6ff);
+        border: 1px solid #dbeafe;
     }
 
-    .chart-bar {
+    .simple-column-bar {
         width: 100%;
+        max-width: 52px;
         min-height: 6px;
-        border-radius: 999px 999px 0 0;
+        border-radius: 12px 12px 4px 4px;
         background: linear-gradient(180deg, #38bdf8, #2563eb);
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
     }
 
-    .chart-label {
-        font-size: 12px;
+    .simple-column.is-zero .simple-column-bar {
+        background: #cbd5e1;
+        box-shadow: none;
+        opacity: 0.7;
+    }
+
+    .simple-column-label {
         color: #475569;
-        font-weight: 750;
+        font-size: 13px;
+        font-weight: 850;
     }
 
     .notification-list {
@@ -277,36 +866,9 @@ render_header('Bảng điều khiển', 'dashboard');
         border: 1px solid #e2e8f0;
     }
 
-    .notification-item strong {
-        color: #0f172a;
-    }
-
     .notification-item span {
         color: #64748b;
         font-size: 13px;
-    }
-
-    .dashboard-main-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 18px;
-        align-items: stretch;
-        margin-bottom: 18px;
-    }
-
-    .dashboard-main-grid > .panel {
-        height: 100%;
-        margin-bottom: 0;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .dashboard-main-grid .table-wrap {
-        flex: 1;
-    }
-
-    .quick-stock-btn {
-        white-space: nowrap;
     }
 
     .staff-grid {
@@ -330,10 +892,6 @@ render_header('Bảng điều khiển', 'dashboard');
         margin-top: 4px;
     }
 
-    .activity-list.compact div {
-        grid-template-columns: 170px minmax(0, 1fr) auto;
-    }
-
     @media (max-width: 1250px) {
         .manager-stats-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -350,173 +908,18 @@ render_header('Bảng điều khiển', 'dashboard');
             grid-template-columns: 1fr;
         }
 
-        .revenue-chart {
+        .simple-column-chart {
             overflow-x: auto;
-            grid-template-columns: repeat(7, minmax(80px, 1fr));
-        }
-
-        .activity-list.compact div {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(7, minmax(82px, 1fr));
         }
     }
-/* ===== DASHBOARD REVENUE CHART FIX ===== */
-
-.clean-bar-chart {
-    height: 230px;
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 12px;
-    align-items: end;
-    padding-top: 12px;
-}
-
-.clean-chart-item {
-    height: 100%;
-    min-width: 0;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: 8px;
-    text-align: center;
-}
-
-.clean-chart-value {
-    min-height: 18px;
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 750;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.clean-chart-track {
-    height: 100%;
-    min-height: 150px;
-    display: flex;
-    align-items: end;
-    justify-content: center;
-    border-radius: 999px;
-    background: #eff6ff;
-    overflow: hidden;
-    border: 1px solid #dbeafe;
-}
-
-.clean-chart-bar {
-    width: 100%;
-    height: var(--bar-height);
-    min-height: 6px;
-    border-radius: 999px 999px 0 0;
-    background: linear-gradient(180deg, #38bdf8, #2563eb);
-    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.24);
-}
-
-.clean-chart-item.is-zero .clean-chart-bar {
-    background: #cbd5e1;
-    box-shadow: none;
-    opacity: 0.65;
-}
-
-.clean-chart-item.has-value .clean-chart-value {
-    color: #0f172a;
-}
-
-.clean-chart-label {
-    color: #475569;
-    font-size: 13px;
-    font-weight: 750;
-}
-
-@media (max-width: 800px) {
-    .clean-bar-chart {
-        overflow-x: auto;
-        grid-template-columns: repeat(7, minmax(80px, 1fr));
-    }
-}
-/* ===== SIMPLE COLUMN REVENUE CHART ===== */
-
-.simple-column-chart {
-    height: 260px;
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 14px;
-    align-items: end;
-    padding: 14px 6px 4px;
-}
-
-.simple-column {
-    height: 100%;
-    min-width: 0;
-    display: grid;
-    grid-template-rows: 24px 1fr 24px;
-    gap: 8px;
-    text-align: center;
-}
-
-.simple-column-value {
-    color: #334155;
-    font-size: 13px;
-    font-weight: 850;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.simple-column-track {
-    height: 100%;
-    min-height: 160px;
-    display: flex;
-    align-items: end;
-    justify-content: center;
-    padding: 0 6px;
-    border-radius: 16px;
-    background: linear-gradient(180deg, #f8fbff, #eff6ff);
-    border: 1px solid #dbeafe;
-}
-
-.simple-column-bar {
-    width: 100%;
-    max-width: 52px;
-    min-height: 6px;
-    border-radius: 12px 12px 4px 4px;
-    background: linear-gradient(180deg, #38bdf8, #2563eb);
-    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
-    transition: 0.2s ease;
-}
-
-.simple-column.has-value:hover .simple-column-bar {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 26px rgba(37, 99, 235, 0.32);
-}
-
-.simple-column.is-zero .simple-column-value {
-    color: #94a3b8;
-}
-
-.simple-column.is-zero .simple-column-bar {
-    background: #cbd5e1;
-    box-shadow: none;
-    opacity: 0.7;
-}
-
-.simple-column-label {
-    color: #475569;
-    font-size: 13px;
-    font-weight: 850;
-}
-
-@media (max-width: 800px) {
-    .simple-column-chart {
-        overflow-x: auto;
-        grid-template-columns: repeat(7, minmax(82px, 1fr));
-    }
-}
 </style>
 
-<div class="hero-panel compact-hero" id="dashboardHero">
+<div class="hero-panel compact-hero">
     <div class="hero-content">
-        <span class="eyebrow">Tổng quan quản lý</span>
-        <h2>Theo dõi doanh thu, tồn kho, giao dịch và hoạt động nhân viên.</h2>
-        <p>Dashboard hỗ trợ quản lý nhìn nhanh xu hướng kinh doanh và các cảnh báo cần xử lý trong ngày.</p>
+        <span class="eyebrow"><?= $isAdmin ? 'Tổng quan quản lý' : 'Tổng quan thu ngân' ?></span>
+        <h2><?= $isAdmin ? 'Theo dõi doanh thu, tồn kho, giao dịch và hoạt động nhân viên.' : 'Theo dõi nhanh giao dịch bán hàng và hóa đơn trong ca làm việc.' ?></h2>
+        <p><?= $isAdmin ? 'Dashboard hỗ trợ quản lý nhìn nhanh xu hướng kinh doanh và các cảnh báo cần xử lý trong ngày.' : 'Dashboard tập trung vào bán hàng, hóa đơn và các giao dịch do thu ngân thực hiện.' ?></p>
     </div>
 
     <div class="hero-actions">
@@ -577,27 +980,25 @@ render_header('Bảng điều khiển', 'dashboard');
         <div class="panel-heading">
             <div>
                 <h2>Xu hướng doanh thu 7 ngày</h2>
-                <p>Biểu đồ giúp quản lý nhìn nhanh ngày nào bán tốt hoặc giảm doanh thu.</p>
+                <p>Biểu đồ giúp nhìn nhanh ngày nào bán tốt hoặc giảm doanh thu.</p>
             </div>
-            <a class="btn secondary" href="<?= e(url('statistics.php')) ?>">Xem báo cáo</a>
+            <?php if ($isAdmin): ?>
+                <a class="btn secondary" href="<?= e(url('statistics.php')) ?>">Xem báo cáo</a>
+            <?php endif; ?>
         </div>
 
         <div class="simple-column-chart">
             <?php foreach ($chartData as $item): ?>
                 <?php
                     $revenue = (float) $item['revenue'];
-                    $barHeight = $revenue > 0
-                        ? max(16, (int) round(($revenue / $maxChartRevenue) * 100))
-                        : 4;
+                    $barHeight = $revenue > 0 ? max(16, (int) round(($revenue / $maxChartRevenue) * 100)) : 4;
                 ?>
 
                 <div class="simple-column <?= $revenue > 0 ? 'has-value' : 'is-zero' ?>" title="<?= e($item['label'] . ' - ' . money($revenue)) ?>">
                     <div class="simple-column-value"><?= money($revenue) ?></div>
-
                     <div class="simple-column-track">
                         <div class="simple-column-bar" style="height: <?= $barHeight ?>%;"></div>
                     </div>
-
                     <div class="simple-column-label"><?= e($item['label']) ?></div>
                 </div>
             <?php endforeach; ?>
@@ -607,7 +1008,7 @@ render_header('Bảng điều khiển', 'dashboard');
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <h2>Thông báo quản lý</h2>
+                <h2>Thông báo</h2>
                 <p>Tổng hợp nhanh các vấn đề cần chú ý.</p>
             </div>
         </div>
