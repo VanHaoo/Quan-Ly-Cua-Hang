@@ -111,11 +111,16 @@ function product_image_html(array $product, string $fallbackIcon): string
 {
     $image = trim((string) ($product['image'] ?? ''));
 
+    $boxStyle = 'width:54px;height:54px;min-width:54px;max-width:54px;min-height:54px;max-height:54px;display:inline-grid;place-items:center;overflow:hidden;border-radius:15px;background:#f8fafc;border:1px solid #dbeafe;vertical-align:middle;';
+    $imgStyle = 'width:54px;height:54px;min-width:54px;max-width:54px;min-height:54px;max-height:54px;display:block;object-fit:cover;border-radius:15px;';
+
     if ($image !== '') {
-        return '<img src="' . e(url($image)) . '" alt="' . e((string) $product['name']) . '">';
+        return '<span class="product-image-frame" style="' . $boxStyle . '">'
+            . '<img class="product-image-thumb" style="' . $imgStyle . '" src="' . e(url($image)) . '" alt="' . e((string) $product['name']) . '" loading="lazy">'
+            . '</span>';
     }
 
-    return e($fallbackIcon);
+    return '<span class="product-image-fallback" style="' . $boxStyle . 'font-size:23px;">' . e($fallbackIcon) . '</span>';
 }
 
 function product_page_icon(string $name, string $category): string
@@ -306,6 +311,82 @@ $paginationParams = array_filter([
 
 render_header('Quản lý sản phẩm', 'products');
 ?>
+
+<style>
+/* FORCE product thumbnails inside this page only */
+.product-table-modern,
+.product-table-modern * {
+    box-sizing: border-box;
+}
+
+.product-table-modern .product-name-cell,
+.product-table-modern .modern-name-cell {
+    display: grid !important;
+    grid-template-columns: 54px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+}
+
+.product-table-modern .product-image-frame,
+.product-table-modern .product-image-fallback,
+.product-table-modern .product-icon,
+.product-table-modern .product-photo {
+    width: 54px !important;
+    height: 54px !important;
+    min-width: 54px !important;
+    max-width: 54px !important;
+    min-height: 54px !important;
+    max-height: 54px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    overflow: hidden !important;
+    border-radius: 15px !important;
+    background: #f8fafc !important;
+    border: 1px solid #dbeafe !important;
+    font-size: 23px !important;
+}
+
+.product-table-modern .product-image-thumb,
+.product-table-modern .product-image-frame img,
+.product-table-modern .product-icon img,
+.product-table-modern .product-photo img,
+.product-table-modern td:first-child img {
+    width: 54px !important;
+    height: 54px !important;
+    min-width: 54px !important;
+    max-width: 54px !important;
+    min-height: 54px !important;
+    max-height: 54px !important;
+    object-fit: cover !important;
+    display: block !important;
+    border-radius: 15px !important;
+}
+
+.product-table-modern td {
+    vertical-align: middle !important;
+}
+
+.product-table-modern td:first-child {
+    width: 34% !important;
+}
+
+.product-table-modern .product-name-cell > div,
+.product-table-modern .modern-name-cell > div {
+    min-width: 0 !important;
+}
+
+.product-table-modern .product-name-cell strong,
+.product-table-modern .modern-name-cell strong,
+.product-table-modern .product-name-cell small,
+.product-table-modern .modern-name-cell small {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+</style>
+
 
 <div class="product-manager-page">
     <section class="panel product-hero-panel">
@@ -501,7 +582,7 @@ render_header('Quản lý sản phẩm', 'products');
                         <tr class="<?= $isLowStock && $isActive ? 'low-stock-row' : '' ?>">
                             <td>
                                 <div class="product-name-cell modern-name-cell">
-                                    <span class="product-icon product-photo"><?= product_image_html($product, $icon) ?></span>
+                                    <?= product_image_html($product, $icon) ?>
                                     <div>
                                         <strong><?= e($product['name']) ?></strong>
                                         <small class="block muted"><?= e($product['code']) ?> · <?= e($product['unit']) ?></small>

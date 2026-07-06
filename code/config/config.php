@@ -187,11 +187,18 @@ function render_header(string $title, string $active = ''): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= e($title) ?> | Quản lý bán hàng</title>
-        <link rel="stylesheet" href="<?= e(url('assets/css/style.css?v=5')) ?>">
+        <link rel="stylesheet" href="<?= e(url('assets/css/style.css?v=6')) ?>">
     </head>
     <body>
+    <button class="mobile-menu-toggle" type="button" aria-label="Mở menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    <div class="mobile-menu-overlay" aria-hidden="true"></div>
+
     <div class="app-shell">
-        <aside class="sidebar">
+        <aside class="sidebar" id="mobile-sidebar">
             <a class="brand" href="<?= e(url('dashboard.php')) ?>">
                 <span class="brand-icon">🛒</span>
                 <span><strong>POS Mini</strong><small>Hệ thống bán hàng tại quầy</small></span>
@@ -261,6 +268,38 @@ function render_footer(): void
                 }
             });
         });
+
+        (() => {
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            const overlay = document.querySelector('.mobile-menu-overlay');
+            const sidebarLinks = document.querySelectorAll('.sidebar a');
+
+            function closeMenu() {
+                document.body.classList.remove('mobile-menu-open');
+                toggle?.setAttribute('aria-expanded', 'false');
+            }
+
+            function openMenu() {
+                document.body.classList.add('mobile-menu-open');
+                toggle?.setAttribute('aria-expanded', 'true');
+            }
+
+            toggle?.addEventListener('click', () => {
+                document.body.classList.contains('mobile-menu-open') ? closeMenu() : openMenu();
+            });
+
+            overlay?.addEventListener('click', closeMenu);
+
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth <= 900) closeMenu();
+                });
+            });
+
+            window.addEventListener('keydown', event => {
+                if (event.key === 'Escape') closeMenu();
+            });
+        })();
     </script>
     </body>
     </html>

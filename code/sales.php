@@ -9,6 +9,30 @@ $pdo = db();
 $_SESSION['cart'] ??= [];
 $_SESSION['checkout_token'] ??= bin2hex(random_bytes(32));
 
+function sales_product_icon(string $name, string $category): string
+{
+    $lowerName = strtolower($name);
+    $lowerCategory = strtolower($category);
+
+    return str_contains($lowerName, 'sữa') || str_contains($lowerName, 'sua') ? '🥛' :
+        (str_contains($lowerName, 'nước') || str_contains($lowerName, 'nuoc') || str_contains($lowerCategory, 'đồ uống') || str_contains($lowerCategory, 'do uong') ? '🥤' :
+        (str_contains($lowerName, 'bánh') || str_contains($lowerName, 'banh') || str_contains($lowerCategory, 'bánh') || str_contains($lowerCategory, 'banh') ? '🍪' :
+        (str_contains($lowerCategory, 'gia dụng') || str_contains($lowerCategory, 'gia dung') ? '🧴' :
+        (str_contains($lowerCategory, 'thực phẩm') || str_contains($lowerCategory, 'thuc pham') ? '🍱' : '🛒'))));
+}
+
+function sales_product_visual(array $product): string
+{
+    $image = trim((string) ($product['image'] ?? ''));
+    $icon = sales_product_icon((string) $product['name'], (string) $product['category']);
+
+    if ($image !== '') {
+        return '<img class="sales-product-img" src="' . e(url($image)) . '" alt="' . e((string) $product['name']) . '" loading="lazy">';
+    }
+
+    return '<span class="sales-product-icon">' . e($icon) . '</span>';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string) ($_POST['action'] ?? '');
@@ -184,14 +208,6 @@ render_header('Bán hàng tại quầy', 'sales');
                     $stock = (int) $product['stock'];
                     $minStock = (int) $product['min_stock'];
                     $isLowStock = $stock <= $minStock;
-                    $lowerName = strtolower((string) $product['name']);
-                    $lowerCategory = strtolower((string) $product['category']);
-
-                    $icon = str_contains($lowerName, 'sữa') || str_contains($lowerName, 'sua') ? '🥛' :
-                        (str_contains($lowerName, 'nước') || str_contains($lowerName, 'nuoc') || str_contains($lowerCategory, 'đồ uống') || str_contains($lowerCategory, 'do uong') ? '🥤' :
-                        (str_contains($lowerName, 'bánh') || str_contains($lowerName, 'banh') || str_contains($lowerCategory, 'bánh') || str_contains($lowerCategory, 'banh') ? '🍪' :
-                        (str_contains($lowerCategory, 'gia dụng') || str_contains($lowerCategory, 'gia dung') ? '🧴' :
-                        (str_contains($lowerCategory, 'thực phẩm') || str_contains($lowerCategory, 'thuc pham') ? '🍱' : '🛒'))));
                 ?>
 
                 <article class="product-card pos-product-card <?= $cartQty > 0 ? 'in-cart' : '' ?> <?= $isLowStock ? 'low-stock-card' : '' ?>">
@@ -203,8 +219,8 @@ render_header('Bán hàng tại quầy', 'sales');
                         <span class="low-stock-badge">Sắp hết</span>
                     <?php endif; ?>
 
-                    <div class="product-visual">
-                        <span><?= $icon ?></span>
+                    <div class="product-visual sales-product-visual">
+                        <?= sales_product_visual($product) ?>
                     </div>
 
                     <div class="product-info">
