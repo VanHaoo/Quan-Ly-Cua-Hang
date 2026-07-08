@@ -1148,29 +1148,6 @@ render_header('Bảng điều khiển', 'dashboard');
     </section>
 </div>
 
-<?php if ($isAdmin && $staffPerformance): ?>
-    <section class="panel">
-        <div class="panel-heading">
-            <div>
-                <h2>Hiệu suất nhân viên 7 ngày</h2>
-                <p>Theo dõi nhanh doanh thu và số hóa đơn theo từng nhân viên.</p>
-            </div>
-            <a class="btn secondary" href="<?= e(url('employees.php')) ?>">Xem nhân viên</a>
-        </div>
-
-        <div class="staff-grid">
-            <?php foreach ($staffPerformance as $staff): ?>
-                <div class="staff-row">
-                    <div>
-                        <strong><?= e($staff['full_name']) ?></strong>
-                        <small><?= (int) $staff['invoice_count'] ?> hóa đơn hoàn tất</small>
-                    </div>
-                    <strong><?= money($staff['revenue']) ?></strong>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </section>
-<?php endif; ?>
 
 <?php if ($recentLogs): ?>
     <section class="panel activity-compact dashboard-log-panel">
